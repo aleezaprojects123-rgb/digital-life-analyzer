@@ -21,9 +21,32 @@ The spec is in [docs/](docs/) and is the only source of truth.
 - Chrome and/or Edge (for the extension)
 - Python 3 is only needed later for model export scripts in `agent/tools/` (Phase 3)
 
-## Setup and run
+## Agent (Step 3)
 
-Agent and extension instructions are added here as each step lands (Step 3: agent, Step 4: extension, Step 5: database and tests).
+Build and test:
+
+```bash
+cd agent
+dotnet test
+dotnet build src/Dla.Agent
+```
+
+Run (first run shows the consent screen):
+
+```bash
+agent/src/Dla.Agent/bin/Debug/net10.0-windows/Dla.Agent.exe
+```
+
+How it works:
+
+- `Dla.Agent.exe` with no arguments is the **supervisor (watchdog)**. It is what auto-start launches. It starts the agent as a child process (`--agent`) and restarts it after a crash: 2s, 5s, 30s, 30s, and after 5 crashes within 2 minutes it retries every 5 minutes, forever, with its own tray icon visible meanwhile.
+- **Auto-start** uses `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`. Per-user, no admin rights, listed in Windows Settings > Apps > Startup.
+- The agent has **no Quit**. It stops only on a Windows end-session (shutdown, restart, logoff), after writing a `clean_shutdown` marker. Anything else (crash, Task Manager kill) has no marker and is restarted.
+- A second copy exits immediately (named mutexes for supervisor and agent).
+- Local state lives in `%LOCALAPPDATA%\DLA` (override with `DLA_DATA_DIR`): `consent.json`, `settings.json` (paused flag), `lifecycle.jsonl` (markers), `agent.log`. Step 5 moves consent, settings and markers into SQLite.
+- Windows 11 may hide a new tray icon in the overflow (^) area. Drag it out once to keep it always visible; an app cannot force this.
+
+Developer overrides (never set in production): `DLA_DATA_DIR` (data folder) and `DLA_AUTOSTART_SUBKEY` (registry key for the Run entry).
 
 ## Hard rules (from the spec)
 
