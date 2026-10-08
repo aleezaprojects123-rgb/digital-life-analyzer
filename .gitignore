@@ -33,3 +33,10 @@ Thumbs.db
 desktop.ini
 .idea/
 .vscode/
+
+# Model benchmark: real labeled titles, downloaded models and reports must never be committed
+agent/tools/model_benchmark/data/
+agent/tools/model_benchmark/models/
+agent/tools/model_benchmark/reports/
+agent/tools/model_benchmark/**/__pycache__/
+*.labeled.csv

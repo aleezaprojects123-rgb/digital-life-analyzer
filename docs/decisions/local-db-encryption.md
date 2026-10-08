@@ -1,6 +1,6 @@
 # Decision: encryption of the local database
 
-Status: **recommendation, not implemented.** Needs Aleeza's approval. Decide before Phase 1 recording ships, so no real user data ever has to be migrated.
+Status: **ACCEPTED by Aleeza on 2026-10-09: Option 1, SQLCipher with a Windows-protected key, adopted only if a Phase 1 benchmark stays within the CPU and memory budget. Not implemented yet.** Decide before Phase 1 recording ships, so no real user data ever has to be migrated. If the benchmark fails, the fallback below applies and this note is updated.
 Owner: Aleeza (agent). Spec: "Secure: TLS in transit, encryption at rest, signed installer" (quality requirements); raw events "local device only".
 
 ## What we are protecting, and from whom

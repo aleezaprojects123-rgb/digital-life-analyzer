@@ -1,0 +1,9 @@
+# Benchmark tooling only. The agent app does not use Python.
+# Tested with Python 3.14 on Windows: numpy 2.5, scikit-learn 1.9, onnxruntime 1.30, onnx 1.23, tokenizers 0.23, psutil 7.2.
+numpy
+scipy
+scikit-learn
+onnxruntime
+onnx            # only for the toy-model test and for quantization
+tokenizers
+psutil
