@@ -16,7 +16,7 @@ Owner: Aleeza (agent). Spec: FR-30, "Efficient OCR Assist", "Privacy and Scope",
 1. **Engine: the Windows built-in OCR (`Windows.Media.Ocr`).**
    - It runs on-device, ships with Windows 10/11, and needs no model download or extra memory.
    - This keeps the agent inside the 150 MB budget (250 MB with the categorization model).
-   - Languages are the OCR languages installed in Windows for the user. English first; a second launch language stays an open question in the spec (Windows supports many through language packs).
+   - Languages: **launch with English (en-US) only**; see "Launch language decision" below.
    - Rejected: Tesseract (extra binaries and language data, larger and slower), cloud OCR (violates the spec), an ONNX OCR model (more RAM, more work for no gain on Windows).
 2. **The screenshot only ever exists in memory.**
    - Capture the **active window only** with `PrintWindow` (no capture border or prompt), downscale if large, run OCR, then dispose the bitmap and zero its buffer.
@@ -73,6 +73,16 @@ Owner: Aleeza (agent). Spec: FR-30, "Efficient OCR Assist", "Privacy and Scope",
 
 **Decision to revisit in Phase 4:** only a **category label and a confidence** are kept from each capture (the default accepted for now). Revisit whether this is enough to debug wrong labels without keeping any text.
 
+## Launch language decision
+
+**Decided by Aleeza, 2026-10-09: launch with English (en-US) only, using the built-in Windows OCR.** This closes the spec's open question "Which OCR languages ship at launch".
+
+- **Evidence (reported by Aleeza):** on the dev PC (Windows 10 Pro), the output of `Get-WindowsCapability -Online | Where Name -Like 'Language.OCR*'` lists no `ur-PK` entry, so Windows offers no Urdu OCR pack. (That command needs an administrator PowerShell; it was run by Aleeza, not re-run in the Claude session. For reference, the same PC's installed recognizers are `en-US` only, and its Windows language list is `en-US` and `ur-PK`.)
+- **Other Windows-supported languages** (for example French, German, Spanish) can be added later by installing the OCR pack on the user's PC. That needs no new engine, but each pack is a separate Windows install on every user PC and is not part of launch.
+- **Urdu** would need a different OCR engine. It is **future roadmap, not launch**.
+- **Fallback for unreadable text:** when OCR is unavailable (language pack missing, window cannot be captured, or text unreadable), the agent uses **app name + window title only** and records no OCR label. This is also what happens when the user has OCR off, so the fallback needs no extra consent.
+- **Consequence for the settings screen:** it must say that OCR reads English only at launch, and that other languages need their Windows OCR pack installed.
+
 ## Risks
 
 - Accuracy on games and custom UI may be modest; a failed or empty read is stored as no label, never guessed.
@@ -81,7 +91,7 @@ Owner: Aleeza (agent). Spec: FR-30, "Efficient OCR Assist", "Privacy and Scope",
 
 ## Open items
 
-- **OCR launch languages (still open):** English first; the second language is the spec's open question.
+- OCR launch languages: **decided** (English only; see above). Later languages (fr, de, es via Windows packs; Urdu via another engine) are roadmap.
 - The per-window capture interval N (Phase 4) and which apps are suggested for opt-in.
 - Revisit "label and confidence only" in Phase 4.
 - Whether the audit log also appears in the web dashboard (it must not upload the log).
