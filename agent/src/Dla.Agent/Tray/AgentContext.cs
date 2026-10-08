@@ -17,10 +17,7 @@ public sealed class AgentContext : ApplicationContext
     private readonly ConsentStore _consentStore;
     private readonly AgentSettingsStore _settingsStore;
     private readonly LifecycleLog _log;
-    // DLA_AUTOSTART_SUBKEY redirects the Run entry to a scratch registry key (dev/test only; never set in production).
-    private readonly AutoStart _autoStart = Environment.GetEnvironmentVariable("DLA_AUTOSTART_SUBKEY") is { Length: > 0 } sub
-        ? new AutoStart(sub)
-        : new AutoStart();
+    private readonly AutoStart _autoStart = CreateAutoStart();
     private readonly ExtensionLink _extension;
     private readonly NotifyIcon _tray;
     private readonly ToolStripMenuItem _pauseItem;
@@ -63,6 +60,31 @@ public sealed class AgentContext : ApplicationContext
         RefreshUi();
     }
 
+    // DLA_AUTOSTART_SUBKEY redirects the Run entry to a scratch registry key (dev/test only; never set in production).
+    public static AutoStart CreateAutoStart() =>
+        Environment.GetEnvironmentVariable("DLA_AUTOSTART_SUBKEY") is { Length: > 0 } sub ? new AutoStart(sub) : new AutoStart();
+
+    /// <summary>
+    /// What Decline does: save the decision, remove any auto-start entry (so a decline never starts at login, even if
+    /// an earlier acceptance left one behind), and write the markers. Removing the entry must never stop the decline
+    /// from completing.
+    /// </summary>
+    public static void RecordDecline(ConsentStore consentStore, LifecycleLog log, string sessionId, AutoStart autoStart)
+    {
+        consentStore.Decline();
+        try
+        {
+            autoStart.Disable();
+        }
+        catch (Exception ex)
+        {
+            Log.Write($"Could not remove the auto-start entry after Decline: {ex.Message}");
+        }
+        log.Append(MarkerKind.Start, sessionId, "declined");
+        log.Append(MarkerKind.CleanShutdown, sessionId, "declined");
+        Log.Write("Consent declined; auto-start removed; exiting.");
+    }
+
     /// <summary>
     /// Starts the agent. Returns null when the user declines consent (the process then exits, does nothing,
     /// and nothing is registered to start at login). <paramref name="restarted"/> is true when the supervisor
@@ -85,10 +107,7 @@ public sealed class AgentContext : ApplicationContext
             form.ShowDialog();
             if (form.Choice != ConsentChoice.Accept)
             {
-                consentStore.Decline();
-                log.Append(MarkerKind.Start, sessionId, "declined");
-                log.Append(MarkerKind.CleanShutdown, sessionId, "declined");
-                Log.Write("Consent declined; exiting.");
+                RecordDecline(consentStore, log, sessionId, CreateAutoStart());
                 return null;
             }
             consent = consentStore.Accept();

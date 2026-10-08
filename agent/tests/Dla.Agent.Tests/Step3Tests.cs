@@ -410,6 +410,104 @@ public class ExtensionLinkTests
     }
 }
 
+public class DeclineTests
+{
+    private const string ScratchKey = @"Software\DLA-Tests\Decline";
+
+    private static void CleanUp() => Registry.CurrentUser.DeleteSubKeyTree(@"Software\DLA-Tests", throwOnMissingSubKey: false);
+
+    [Fact]
+    public void Decline_removes_an_old_run_entry_so_it_never_starts_at_login()
+    {
+        using var d = new TempDir();
+        try
+        {
+            var autoStart = new AutoStart(ScratchKey, "DlaTest");
+            autoStart.Enable(@"C:\old\Dla.Agent.exe");                       // left behind by an earlier acceptance
+            new ConsentStore(d.Path).Accept();
+            Assert.True(autoStart.IsEnabled);
+
+            Dla.Agent.Tray.AgentContext.RecordDecline(new ConsentStore(d.Path), new LifecycleLog(d.Path), "s1", autoStart);
+
+            Assert.False(autoStart.IsEnabled);
+            Assert.Equal(ConsentState.Declined, new ConsentStore(d.Path).Load().State);
+            Assert.False(RecordingGate.CanRecord(new ConsentStore(d.Path).Load(), new AgentSettings(false)));
+        }
+        finally { CleanUp(); }
+    }
+
+    [Fact]
+    public void Decline_with_no_run_entry_works_and_leaves_none()
+    {
+        using var d = new TempDir();
+        try
+        {
+            var autoStart = new AutoStart(ScratchKey, "DlaTest");
+            Assert.False(autoStart.IsEnabled);
+            Dla.Agent.Tray.AgentContext.RecordDecline(new ConsentStore(d.Path), new LifecycleLog(d.Path), "s1", autoStart);
+            Assert.False(autoStart.IsEnabled);
+            Assert.Equal(ConsentState.Declined, new ConsentStore(d.Path).Load().State);
+        }
+        finally { CleanUp(); }
+    }
+
+    [Fact]
+    public void Decline_writes_the_start_and_clean_shutdown_markers_so_it_is_not_seen_as_a_crash()
+    {
+        using var d = new TempDir();
+        try
+        {
+            var log = new LifecycleLog(d.Path);
+            Dla.Agent.Tray.AgentContext.RecordDecline(new ConsentStore(d.Path), log, "s1", new AutoStart(ScratchKey, "DlaTest"));
+            Assert.Equal([MarkerKind.Start, MarkerKind.CleanShutdown], log.ReadAll().Select(m => m.Kind));
+            Assert.True(log.HasCleanShutdown("s1"));
+            Assert.Equal(PreviousRun.Clean, log.PreviousRunStatus("s2"));
+        }
+        finally { CleanUp(); }
+    }
+
+    [Fact]
+    public void Decline_only_removes_the_dla_value_and_not_other_startup_entries()
+    {
+        using var d = new TempDir();
+        try
+        {
+            using (var key = Registry.CurrentUser.CreateSubKey(ScratchKey))
+                key.SetValue("SomeOtherApp", @"C:\other\app.exe");
+            var autoStart = new AutoStart(ScratchKey, "DlaTest");
+            autoStart.Enable(@"C:\old\Dla.Agent.exe");
+
+            Dla.Agent.Tray.AgentContext.RecordDecline(new ConsentStore(d.Path), new LifecycleLog(d.Path), "s1", autoStart);
+
+            using var after = Registry.CurrentUser.OpenSubKey(ScratchKey)!;
+            Assert.Null(after.GetValue("DlaTest"));
+            Assert.Equal(@"C:\other\app.exe", after.GetValue("SomeOtherApp"));
+        }
+        finally { CleanUp(); }
+    }
+
+    [Fact]
+    public void The_agent_uses_the_scratch_key_when_the_override_is_set_so_tests_never_touch_the_real_run_key()
+    {
+        var before = Environment.GetEnvironmentVariable("DLA_AUTOSTART_SUBKEY");
+        try
+        {
+            Environment.SetEnvironmentVariable("DLA_AUTOSTART_SUBKEY", ScratchKey);
+            var fromAgent = Dla.Agent.Tray.AgentContext.CreateAutoStart();
+            fromAgent.Enable(@"C:\x\Dla.Agent.exe");
+            using var scratch = Registry.CurrentUser.OpenSubKey(ScratchKey)!;
+            Assert.NotNull(scratch.GetValue(AutoStart.DefaultValueName));
+            fromAgent.Disable();
+            Assert.Null(scratch.GetValue(AutoStart.DefaultValueName));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("DLA_AUTOSTART_SUBKEY", before);
+            CleanUp();
+        }
+    }
+}
+
 public class AutoStartAndInstanceTests
 {
     [Fact]
