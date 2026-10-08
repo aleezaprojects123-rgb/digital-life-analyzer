@@ -114,6 +114,34 @@ How it reaches users at release:
 - The DLA website (see [docs/decisions/website-activation.md](docs/decisions/website-activation.md)) links to the store pages. Once installed it starts with the browser and updates automatically through the store.
 - The user can disable or remove it at any time. We never re-enable it; the agent marks that time as unknown.
 
+## Local database (Step 5)
+
+SQLite file `%LOCALAPPDATA%\DLA\dla.db` (WAL mode, `secure_delete` on so purged rows are overwritten). Code is in `agent/src/Dla.Agent/Data/`; the schema is the append-only list in `Migrations.cs`. Never edit a shipped migration; add a new one. Migrations run from an empty database, each in its own transaction, and an agent refuses a database from a newer version.
+
+| Table | Holds |
+|---|---|
+| `events` | app, site, title, precise start/end (UTC ms), source (`agent` or `extension`), category, confidence, `is_unknown` marker + reason |
+| `personal_rules` | user corrections (app / site / title contains -> category), unique per pattern, case-insensitive |
+| `settings` | `retention_days` (30), `idle_threshold_seconds` (180), `paused` (0) |
+| `exclusions` | apps and sites the user excluded |
+| `consent_records` | append-only consent history (state, text version, time); newest row is current |
+| `ocr_audit_log` | one row per OCR capture: counts and a label only |
+| `upload_queue` | already-encrypted summaries; a payload hash prevents duplicates |
+| `lifecycle_markers` | start, clean_shutdown, suspend, resume, crash_detected, extension_silent_start/end |
+
+No table can store keystrokes or screenshots: a unit test fails if any table or column is named like one, and the only binary column allowed is `upload_queue.payload` (ciphertext).
+
+**Retention purge** (`RetentionPurger`): deletes events that ended (or, if still open, started) before `now - retention_days`, plus old OCR audit rows, lifecycle markers and already-sent queue rows. Unsent summaries are never purged.
+
+**Not wired yet:** the running agent still keeps consent, the paused flag and lifecycle markers in JSON files (Step 3). They move to these tables in Phase 1, when the recorder first needs the database, so there is only ever one live source of truth.
+
+Run the tests:
+
+```bash
+cd agent
+dotnet test
+```
+
 Developer overrides (never set in production): `DLA_DATA_DIR` (data folder) and `DLA_AUTOSTART_SUBKEY` (registry key for the Run entry).
 
 ## Hard rules (from the spec)
