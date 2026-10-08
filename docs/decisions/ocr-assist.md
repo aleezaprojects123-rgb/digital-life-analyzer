@@ -25,16 +25,53 @@ Owner: Aleeza (agent). Spec: FR-30, "Efficient OCR Assist", "Privacy and Scope",
 3. **Only a safe label is kept.**
    - The raw OCR text is processed in memory by the same on-device categorizer (rules first, then the model) and then discarded.
    - What is kept: a category label and a confidence. The text itself is never stored, logged or uploaded.
-4. **When it may run.** All of these must be true:
-   - OCR is switched on in settings (default off).
-   - The app is on the user's OCR opt-in list.
-   - Recording is allowed (consent given, not paused).
-   - The window is not a private window and the app is not on the exclusion list.
-   - The title is unclear (rules and model gave low confidence from the title alone).
-   - Rate limit (assumption): at most one capture per window per 60 seconds.
+4. **When it may run:** see "Trigger policy" below. It is a strict allow-list: every condition must hold, and any "never" case blocks it.
 5. **Audit log.** Every capture adds a row to `ocr_audit_log`: time, app, window title (as masked by the sensitive-title rules), trigger reason, number of characters read (a count only), resulting label, confidence, and how many milliseconds the image lived. No text and no image columns exist. It stays on the PC and is never uploaded.
 6. **Where the user sees the audit log.** The tray menu is fixed at Pause/Resume, Open dashboard and Consent and privacy. The audit log is shown inside the Consent and privacy window (and later the dashboard settings page). The exact screen is decided when OCR is built.
 7. **Consent.** OCR needs a separate, plain-language opt-in per app, shown when the user enables it. It is not covered by the first-run consent text; adding OCR changes what is read, so the consent text version is bumped when the feature ships.
+
+## Trigger policy
+
+**OCR runs only when ALL of these are true:**
+
+1. Consent is given and recording is not paused.
+2. OCR is enabled for **that app** (off by default; per-app opt-in).
+3. The window is in the **foreground** and the user is **not idle**.
+4. The title is **unclear**, meaning any of:
+   - the model's confidence from the title alone is under 60%;
+   - the title is empty;
+   - the title is generic, such as "Document1" or "Untitled";
+   - the title is the same as the app name.
+
+**OCR NEVER runs for:**
+
+- apps that are not opted in;
+- hidden or excluded apps or sites;
+- private windows;
+- password-manager or banking-type windows;
+- background windows (only the active window is ever captured).
+
+**Capture handling, always:**
+
+- Only the active window is captured.
+- The screenshot is deleted within 5 seconds, **even if OCR fails or times out**.
+- **Every capture** is written to the audit log, including failed ones.
+
+**Examples**
+
+| Situation | Title clear? | OCR? |
+|---|---|---|
+| VS Code showing `Program.cs - dla - Visual Studio Code` | Yes: the model is confident | No |
+| Word showing `Document1` | No: generic title | Yes, if Word is opted in |
+| A game window, title is the game name or empty | No: the title says nothing about the activity | Yes, if the game is opted in |
+| Word showing `Document1`, but Word is not opted in | No | No: the app is not opted in |
+| A password manager window | Not relevant | No: never |
+
+**Assumption, NOT in the spec:** at most one capture per window per N minutes, to limit load and intrusion. N is to be tested in Phase 4. No value is fixed until then.
+
+**Assumption, NOT in the spec:** "password-manager or banking-type" windows are recognised by a built-in deny list (known password-manager executables, banking words in the title or site) plus the user's exclusions. The list and its limits are defined when OCR is built.
+
+**Decision to revisit in Phase 4:** only a **category label and a confidence** are kept from each capture (the default accepted for now). Revisit whether this is enough to debug wrong labels without keeping any text.
 
 ## Risks
 
@@ -44,6 +81,7 @@ Owner: Aleeza (agent). Spec: FR-30, "Efficient OCR Assist", "Privacy and Scope",
 
 ## Open items
 
-- Second launch language (spec open question).
-- Final rate limit and which apps are suggested for opt-in.
+- **OCR launch languages (still open):** English first; the second language is the spec's open question.
+- The per-window capture interval N (Phase 4) and which apps are suggested for opt-in.
+- Revisit "label and confidence only" in Phase 4.
 - Whether the audit log also appears in the web dashboard (it must not upload the log).
