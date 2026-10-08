@@ -10,7 +10,7 @@ The spec is in [docs/](docs/) and is the only source of truth.
 |---|---|
 | `agent/` | Windows tray agent (C#, current .NET LTS), local SQLite, tests |
 | `extension/` | Chrome/Edge Manifest V3 extension |
-| `shared/` | Contracts shared with the backend (empty until Phase 1+) |
+| `shared/` | Contracts shared with the backend: JSON Schemas and samples for Interfaces A to D ([shared/contracts/README.md](shared/contracts/README.md)) |
 | `docs/` | Project spec (13 `.md` files) |
 
 ## Prerequisites

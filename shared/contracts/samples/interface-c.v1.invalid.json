@@ -1,0 +1,19 @@
+{
+  "schema_version": "interface-c.v1",
+  "device_id": "b7a2f0c4-91d3-4e68-8f1a-5c3d7e9b2a10",
+  "revision": 4,
+  "updated_at": "2026-10-09T10:15:00Z",
+  "updated_by": "dashboard",
+  "settings": {
+    "retention_days": 0,
+    "idle_threshold_seconds": 180,
+    "paused": "no",
+    "excluded_apps": [],
+    "excluded_sites": ["https://bank.example.com/accounts?id=1"],
+    "nudges": { "enabled": true, "snoozed_until": null },
+    "daily_goal": { "date": "2026-10-09", "text": null }
+  },
+  "rules": [
+    { "rule_id": "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d", "match_kind": "regex", "pattern": "", "category": "Gaming", "updated_at": "2026-10-08T18:20:00Z", "deleted": false }
+  ]
+}

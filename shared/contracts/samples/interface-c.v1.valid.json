@@ -1,0 +1,45 @@
+{
+  "schema_version": "interface-c.v1",
+  "device_id": "b7a2f0c4-91d3-4e68-8f1a-5c3d7e9b2a10",
+  "revision": 4,
+  "updated_at": "2026-10-09T10:15:00Z",
+  "updated_by": "dashboard",
+  "settings": {
+    "retention_days": 30,
+    "idle_threshold_seconds": 180,
+    "paused": false,
+    "excluded_apps": ["keepass.exe"],
+    "excluded_sites": ["bank.example.com"],
+    "nudges": { "enabled": true, "snoozed_until": null },
+    "daily_goal": { "date": "2026-10-09", "text": "Finish chapter 4 of thermodynamics" }
+  },
+  "rules": [
+    {
+      "rule_id": "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      "match_kind": "site",
+      "pattern": "youtube.com",
+      "category": "Study",
+      "updated_at": "2026-10-08T18:20:00Z",
+      "deleted": false
+    },
+    {
+      "rule_id": "1b2c3d4e-5f6a-4b7c-9d8e-0f1a2b3c4d5e",
+      "match_kind": "app",
+      "pattern": "discord.exe",
+      "category": "Social Media",
+      "updated_at": "2026-10-09T09:00:00Z",
+      "deleted": true
+    }
+  ],
+  "deletion_requests": [
+    {
+      "request_id": "2c3d4e5f-6a7b-4c8d-8e9f-1a2b3c4d5e6f",
+      "scope": "date_range",
+      "from": "2026-10-01",
+      "to": "2026-10-03",
+      "requested_at": "2026-10-09T10:14:00Z",
+      "requested_by": "dashboard"
+    }
+  ],
+  "account": { "terms_version": "2026-10", "terms_accepted_at": "2026-10-01T12:00:00Z" }
+}

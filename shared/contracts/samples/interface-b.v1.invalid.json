@@ -1,0 +1,13 @@
+{
+  "schema_version": "interface-b.v1",
+  "device_id": "b7a2f0c4-91d3-4e68-8f1a-5c3d7e9b2a10",
+  "generated_at": "2026-10-09T02:00:00Z",
+  "feed_version": 17,
+  "valid_until": "2026-10-10T02:00:00Z",
+  "status": "ready",
+  "source": "personal_model",
+  "model_version": "2026.10.1",
+  "hours": [
+    { "hour_start": "2026-10-09T06:30:00Z", "risk": 1.4, "confidence": 0.64, "high_risk": "yes" }
+  ]
+}

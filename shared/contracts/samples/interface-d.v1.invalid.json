@@ -1,0 +1,8 @@
+{
+  "schema_version": "interface-d.v1",
+  "message_type": "activation_request",
+  "code": "short",
+  "agent_version": "0.1.0",
+  "os": "windows",
+  "password": "hunter2"
+}

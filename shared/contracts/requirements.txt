@@ -1,0 +1,2 @@
+# Only needed to run the contract tests (tests/test_contracts.py). The schemas themselves are plain JSON.
+jsonschema>=4.18

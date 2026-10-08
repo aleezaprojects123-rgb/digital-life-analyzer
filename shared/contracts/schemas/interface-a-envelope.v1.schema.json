@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:dla:contracts:interface-a-envelope.v1.schema.json",
+  "title": "Interface A v1: encrypted upload envelope (what goes on the wire and into the agent's upload queue)",
+  "description": "Wraps one interface-a.v1 summary document. The ciphertext is opaque to this schema, so privacy is enforced by (1) the document schema, (2) the agent validating before encrypting, and (3) the server validating after decrypting and rejecting any unknown field. Who holds the key, how it is delivered, and the algorithm are NOT defined by the spec: OQ-A1. The values below are a proposal.",
+  "x-open-question": "OQ-A1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "batch_id", "device_id", "created_at", "document_schema", "alg", "key_id", "nonce", "ciphertext"],
+  "properties": {
+    "schema_version": { "const": "interface-a-envelope.v1" },
+    "batch_id": {
+      "description": "Same value as inside the document. Also sent as the Idempotency-Key header.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "device_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,3})?Z$"
+    },
+    "document_schema": {
+      "description": "Which schema the decrypted document must satisfy.",
+      "const": "interface-a.v1"
+    },
+    "alg": {
+      "description": "Proposal only (OQ-A1).",
+      "const": "AES-256-GCM"
+    },
+    "key_id": {
+      "description": "Identifies which key encrypted this batch, so keys can be rotated.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_-]+$"
+    },
+    "nonce": {
+      "description": "12 random bytes, base64. Never reused with the same key.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9+/]{16}$"
+    },
+    "ciphertext": {
+      "description": "Base64 of the encrypted JSON document, including the authentication tag. Authenticated additional data should bind schema_version, batch_id and device_id (OQ-A1). Size limit is a proposal (OQ-A5).",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000000,
+      "pattern": "^[A-Za-z0-9+/]+={0,2}$"
+    }
+  }
+}

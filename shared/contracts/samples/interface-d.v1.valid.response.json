@@ -1,0 +1,8 @@
+{
+  "schema_version": "interface-d.v1",
+  "message_type": "activation_response",
+  "device_id": "b7a2f0c4-91d3-4e68-8f1a-5c3d7e9b2a10",
+  "device_token": "dlat_example-not-a-real-token-0123456789abcdefABCDEF",
+  "token_expires_at": null,
+  "account": { "terms_version": "2026-10", "terms_accepted_at": "2026-10-01T12:00:00Z" }
+}

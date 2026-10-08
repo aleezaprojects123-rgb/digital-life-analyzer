@@ -1,0 +1,8 @@
+{
+  "schema_version": "interface-d.v1",
+  "message_type": "activation_request",
+  "code": "Zk3p9QxT7vLm2WnR8aYd",
+  "agent_version": "0.1.0",
+  "os": "windows",
+  "device_name": "Aleeza laptop"
+}

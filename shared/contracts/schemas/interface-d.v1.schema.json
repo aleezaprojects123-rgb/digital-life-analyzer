@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:dla:contracts:interface-d.v1.schema.json",
+  "title": "Interface D v1: device activation (the dla://activate one-time-code flow)",
+  "description": "Three message types, told apart by message_type: activation_request (agent to backend), activation_response (backend to agent), error. Flow from docs/decisions/website-activation.md: the website, after sign-up and terms, shows a button that opens dla://activate?code=<one-time code>; Windows hands the link to the agent registered per user in HKCU; the agent posts the code and receives a revocable per-device token. The agent never sees the user's password, and there is no password login in the agent. The code and the token must never be written to logs, files in the repo, or crash reports.",
+  "oneOf": [
+    { "$ref": "#/$defs/activationRequest" },
+    { "$ref": "#/$defs/activationResponse" },
+    { "$ref": "#/$defs/error" }
+  ],
+  "$defs": {
+    "uuid": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "utcTimestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,3})?Z$"
+    },
+    "activationRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "message_type", "code", "agent_version", "os"],
+      "properties": {
+        "schema_version": { "const": "interface-d.v1" },
+        "message_type": { "const": "activation_request" },
+        "code": {
+          "description": "The one-time code taken from the dla://activate?code=... link. Single use and short-lived (decision note). Length, alphabet and lifetime are OQ-D1; URL-safe characters only is a proposal.",
+          "x-open-question": "OQ-D1",
+          "type": "string",
+          "minLength": 16,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_-]+$"
+        },
+        "agent_version": { "type": "string", "minLength": 1, "maxLength": 32, "pattern": "^[A-Za-z0-9._+-]+$" },
+        "os": { "const": "windows" },
+        "device_name": {
+          "description": "Optional label shown in the website's device list so the user can tell devices apart for revoking. Whether to collect it at all (a PC name can identify a person) is OQ-D2.",
+          "x-open-question": "OQ-D2",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        }
+      }
+    },
+    "activationResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "message_type", "device_id", "device_token", "token_expires_at", "account"],
+      "properties": {
+        "schema_version": { "const": "interface-d.v1" },
+        "message_type": { "const": "activation_response" },
+        "device_id": { "$ref": "#/$defs/uuid" },
+        "device_token": {
+          "description": "Opaque secret, sent as 'Authorization: Bearer' on Interfaces A, B and C. Revocable per device from the website. Stored by the agent protected by Windows (DPAPI, current user). Lifetime and refresh are OQ-D3.",
+          "x-open-question": "OQ-D3",
+          "type": "string",
+          "minLength": 32,
+          "maxLength": 512,
+          "pattern": "^[A-Za-z0-9._~+/=-]+$"
+        },
+        "token_expires_at": {
+          "description": "null means it does not expire until revoked (OQ-D3).",
+          "oneOf": [{ "$ref": "#/$defs/utcTimestamp" }, { "type": "null" }]
+        },
+        "account": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["terms_version", "terms_accepted_at"],
+          "properties": {
+            "terms_version": { "type": "string", "minLength": 1, "maxLength": 32, "pattern": "^[A-Za-z0-9._-]+$" },
+            "terms_accepted_at": { "$ref": "#/$defs/utcTimestamp" }
+          }
+        }
+      }
+    },
+    "error": {
+      "description": "Also the body for a 401 on Interfaces A, B and C when the device has been revoked (error = device_revoked).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "message_type", "error"],
+      "properties": {
+        "schema_version": { "const": "interface-d.v1" },
+        "message_type": { "const": "error" },
+        "error": { "enum": ["code_invalid", "code_expired", "code_used", "device_revoked", "rate_limited"] },
+        "retry_after_seconds": { "type": "integer", "minimum": 1, "maximum": 86400 }
+      }
+    }
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "schema_version": "interface-d.v1",
+  "message_type": "error",
+  "error": "code_used"
+}

@@ -1,0 +1,40 @@
+{
+  "schema_version": "interface-a.v1",
+  "batch_id": "6f1c2d9e-3a41-4b7e-9c55-0d2e8a7b1f34",
+  "device_id": "b7a2f0c4-91d3-4e68-8f1a-5c3d7e9b2a10",
+  "created_at": "2026-10-09T11:05:12Z",
+  "hours": [
+    {
+      "hour_start": "2026-10-09T08:00:00Z",
+      "utc_offset_minutes": 300,
+      "revision": 1,
+      "categories": {
+        "Study": { "seconds": 1800, "confidence": 0.91 },
+        "Work": { "seconds": 900, "confidence": 0.84 },
+        "Entertainment": { "seconds": 300, "confidence": 0.77 },
+        "Social Media": { "seconds": 0, "confidence": null },
+        "Other": { "seconds": 240, "confidence": 0.66 }
+      },
+      "unknown_seconds": 360,
+      "switches": 14,
+      "interruptions": 3,
+      "goal_match_percent": 62.5
+    },
+    {
+      "hour_start": "2026-10-09T09:00:00Z",
+      "utc_offset_minutes": 300,
+      "revision": 2,
+      "categories": {
+        "Study": { "seconds": 0, "confidence": null },
+        "Work": { "seconds": 2700, "confidence": 0.93 },
+        "Entertainment": { "seconds": 0, "confidence": null },
+        "Social Media": { "seconds": 600, "confidence": 0.88 },
+        "Other": { "seconds": 0, "confidence": null }
+      },
+      "unknown_seconds": 300,
+      "switches": 22,
+      "interruptions": 5,
+      "goal_match_percent": null
+    }
+  ]
+}

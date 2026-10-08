@@ -1,0 +1,11 @@
+{
+  "schema_version": "interface-a-envelope.v1",
+  "batch_id": "not-a-uuid",
+  "device_id": "b7a2f0c4-91d3-4e68-8f1a-5c3d7e9b2a10",
+  "created_at": "2026-10-09T11:05:12Z",
+  "document_schema": "interface-a.v1",
+  "alg": "none",
+  "key_id": "k-2026-10",
+  "nonce": "short",
+  "plaintext_titles": ["Inbox - Gmail"]
+}

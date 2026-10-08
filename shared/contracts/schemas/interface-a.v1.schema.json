@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:dla:contracts:interface-a.v1.schema.json",
+  "title": "Interface A v1: activity summary document (plaintext, before encryption)",
+  "description": "What the agent uploads to the backend, as the content of an encrypted envelope (see interface-a-envelope.v1.schema.json). SUMMARIES ONLY: per-hour totals by category. It can never carry raw events, app names, site names, window titles, URLs, screenshots or typed text: every object is closed (additionalProperties false) and every string is a bounded identifier or timestamp. Spec: FR-9, FR-10, FR-13, 'What We Store' (Activity summaries: time by category, confidence, per hour).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "batch_id", "device_id", "created_at", "hours"],
+  "properties": {
+    "schema_version": { "const": "interface-a.v1" },
+    "batch_id": {
+      "description": "Idempotency key, generated once by the agent when the batch is created and reused on every retry of that batch.",
+      "$ref": "#/$defs/uuid"
+    },
+    "device_id": {
+      "description": "Issued to the agent at activation (Interface D).",
+      "$ref": "#/$defs/uuid"
+    },
+    "created_at": { "$ref": "#/$defs/utcTimestamp" },
+    "hours": {
+      "description": "One entry per completed hour. hour_start must be unique inside a batch. x-open-question OQ-A5 for the maximum length (744 = 31 days of offline catch-up is a proposal).",
+      "x-open-question": "OQ-A5",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 744,
+      "items": { "$ref": "#/$defs/hourSummary" }
+    }
+  },
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "utcTimestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,3})?Z$"
+    },
+    "hourStart": {
+      "description": "Start of the hour in UTC, on the hour exactly.",
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:00:00Z$"
+    },
+    "categoryStats": {
+      "description": "Seconds spent in one category during the hour, and the confidence of those labels. confidence is null exactly when seconds is 0. How confidence is averaged is OQ-A8.",
+      "x-open-question": "OQ-A8",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["seconds", "confidence"],
+      "properties": {
+        "seconds": { "type": "integer", "minimum": 0, "maximum": 3600 },
+        "confidence": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
+      },
+      "if": { "properties": { "seconds": { "const": 0 } } },
+      "then": { "properties": { "confidence": { "type": "null" } } },
+      "else": { "properties": { "confidence": { "type": "number" } } }
+    },
+    "hourSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hour_start", "utc_offset_minutes", "revision", "categories", "unknown_seconds", "switches", "interruptions"],
+      "properties": {
+        "hour_start": { "$ref": "#/$defs/hourStart" },
+        "utc_offset_minutes": {
+          "description": "The user's local UTC offset during this hour, so the server can compute local hour-of-day and weekday/weekend (FR-15, FR-20). Not stated in the spec: OQ-A2.",
+          "x-open-question": "OQ-A2",
+          "type": "integer",
+          "minimum": -720,
+          "maximum": 840
+        },
+        "revision": {
+          "description": "Starts at 1 and increases each time the agent recomputes this hour (for example after a correction is applied to the past, FR-8). The server keeps the highest revision per (device_id, hour_start). Not stated in the spec: OQ-A3.",
+          "x-open-question": "OQ-A3",
+          "type": "integer",
+          "minimum": 1
+        },
+        "categories": {
+          "description": "The five spec categories, always all present.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["Study", "Work", "Entertainment", "Social Media", "Other"],
+          "properties": {
+            "Study": { "$ref": "#/$defs/categoryStats" },
+            "Work": { "$ref": "#/$defs/categoryStats" },
+            "Entertainment": { "$ref": "#/$defs/categoryStats" },
+            "Social Media": { "$ref": "#/$defs/categoryStats" },
+            "Other": { "$ref": "#/$defs/categoryStats" }
+          }
+        },
+        "unknown_seconds": {
+          "description": "Seconds in this hour marked 'unknown' (gaps, crashes, extension silent). Never guessed into a category. Rule (checked by the receiver, not expressible here): the five category seconds plus unknown_seconds must not exceed 3600.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3600
+        },
+        "switches": {
+          "description": "App/tab switches in this hour (FR-13). Definition of a switch: OQ-A6.",
+          "x-open-question": "OQ-A6",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3600
+        },
+        "interruptions": {
+          "description": "Interruption count in this hour (FR-13). The spec does not define an interruption: OQ-A6.",
+          "x-open-question": "OQ-A6",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3600
+        },
+        "goal_match_percent": {
+          "description": "Share of this hour's activity that matched the daily goal, 0 to 100, or null if no goal was set (FR-12; 'match %' in 'What We Store'). The spec does not say whether the agent or the server computes it, or at what granularity: OQ-A4. Optional.",
+          "x-open-question": "OQ-A4",
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 100
+        }
+      }
+    }
+  }
+}
