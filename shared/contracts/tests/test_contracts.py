@@ -276,8 +276,15 @@ class InterfaceDRules(unittest.TestCase):
 class OpenQuestionTests(unittest.TestCase):
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
+    def test_decided_questions_are_no_longer_marked_open_in_any_schema(self):
+        section = self.readme.split("## Open questions for Fatima", 1)[1]
+        decided = set(re.findall(r"\*\*(OQ-[A-Z0-9-]+):\*\*\s*\*\*DECIDED", section))
+        self.assertGreaterEqual(decided, {"OQ-A7", "OQ-C3", "OQ-C4"})
+        still_open = set(re.findall(r'"x-open-question":\s*"(OQ-[A-Z0-9-]+)"', "\n".join(json.dumps(s) for s in SCHEMAS.values())))
+        self.assertEqual(decided & still_open, set(), "a decided question is still marked open in a schema")
+
     def test_every_open_question_marked_in_a_schema_is_listed_in_the_readme(self):
-        ids = set(re.findall(r'"x-open-question":\s*"(OQ-[A-Z0-9-]+)"', "\n".join(json.dumps(s) for s in SCHEMAS.values())))
+        ids = set(re.findall(r'"x-(?:open-question|decision)":\s*"(OQ-[A-Z0-9-]+)"', "\n".join(json.dumps(s) for s in SCHEMAS.values())))
         self.assertTrue(ids)
         section = self.readme.split("## Open questions for Fatima", 1)[1]
         listed = set(re.findall(r"\*\*(OQ-[A-Z0-9-]+):\*\*", section))

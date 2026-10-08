@@ -37,8 +37,8 @@
           "maximum": 3600
         },
         "paused": {
-          "description": "Pause tracking (FR-28). Whether the dashboard may also resume tracking remotely is OQ-C3.",
-          "x-open-question": "OQ-C3",
+          "description": "Pause tracking (FR-28). DECIDED (OQ-C3): the dashboard may set this to true but may not set it back to false; only the user at the PC can resume. The agent ignores a dashboard value of false while the PC is paused. This rule is behaviour, not something the schema can enforce.",
+          "x-decision": "OQ-C3",
           "type": "boolean"
         },
         "excluded_apps": {
