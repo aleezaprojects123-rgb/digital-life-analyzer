@@ -1,0 +1,35 @@
+# .NET
+bin/
+obj/
+*.user
+.vs/
+TestResults/
+publish/
+
+# Installer output / signing
+dist/
+*.pfx
+*.snk
+
+# Local data (raw events must never be committed)
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.log
+
+# Python tooling (agent/tools)
+__pycache__/
+.venv/
+*.onnx
+
+# Extension
+node_modules/
+*.crx
+*.pem
+
+# OS / editor
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
