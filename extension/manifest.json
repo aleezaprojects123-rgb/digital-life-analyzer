@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Digital Life Analyzer",
+  "version": "0.0.1",
+  "description": "Companion for the Digital Life Analyzer desktop agent. Phase 0 shell: heartbeat only, reads no page content.",
+  "minimum_chrome_version": "120",
+  "incognito": "not_allowed",
+  "permissions": ["alarms", "storage"],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  }
+}
