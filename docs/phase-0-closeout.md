@@ -22,13 +22,14 @@ Manual results reported by Aleeza (not automated tests): consent screen first; D
 
 | Decision | Outcome | Record |
 |---|---|---|
-| OCR trigger policy | Runs only when consent is given, not paused, OCR enabled for that app (off by default), window in foreground and user not idle, and the title unclear (under 60% confidence, empty, generic, or equal to the app name). Never for apps not opted in, hidden or excluded apps/sites, private windows, password-manager or banking-type windows, or background windows. Screenshot deleted within 5 seconds even on failure; every capture audit-logged. Only a category label and a confidence are kept (to revisit in Phase 4). Per-window capture interval N is an assumption not in the spec, to be tested in Phase 4. | `docs/decisions/ocr-assist.md` |
+| OCR trigger policy | Runs only when consent is given, not paused, the user has allowed OCR for that app (off by default), window in foreground and user not idle, and the title unclear (under 60% confidence, empty, generic, or equal to the app name). Never for apps the user said Never to or has not answered for, hidden or excluded apps/sites, the fixed blocklist, or background windows. Screenshot deleted within 5 seconds even on failure; every capture audit-logged. Only a category label and a confidence are kept (to revisit in Phase 4). Per-window capture interval N is an assumption not in the spec, to be tested in Phase 4. | `docs/decisions/ocr-assist.md` |
+| OCR consent flow | Just-in-time prompt the first time OCR would help in an app: **Always for \<App\> / Just this time / Never**. Nothing is captured until the user answers. Always and Never are remembered per app; Just this time is not. Fixed blocklist (password managers, banking and payment sites, private or incognito windows, the lock screen) that the user cannot enable. Every answer and every OCR use is audit-logged. OCR settings stay local-only. The schema change for the log is not built. | `docs/decisions/ocr-assist.md` |
 | OCR launch language | English (en-US) only, built-in Windows OCR. Other Windows-supported languages can be added later by installing their pack. Urdu needs another engine and is roadmap. Fallback for unreadable text: app name and window title only. | `docs/decisions/ocr-assist.md` |
 | Website activation | Account and terms on the website; `dla://activate?code=...` one-time code exchanged for a revocable device token; local consent stays the source of truth for recording; no Quit. **Planned for Phase 5**, needs Fatima's backend. | `docs/decisions/website-activation.md` |
 | Local database encryption | SQLCipher with a random key protected by Windows (current user), adopted only if a Phase 1 benchmark stays within the CPU and memory budget; otherwise fall back to relying on the OS and say so in the privacy text. | `docs/decisions/local-db-encryption.md` |
 | OQ-A7 | Forecast features are category-level only (previous category, hour of day, weekday, switches, interruptions). App names stay on the device. App-level features only later, as an explicit opt-in. | `shared/contracts/README.md` |
 | OQ-C3 | The dashboard may pause tracking remotely but may not resume it. Only the user at the PC can resume. | `shared/contracts/README.md` |
-| OQ-C4 | OCR opt-in settings are not synced; local-only. | `shared/contracts/README.md` |
+| OQ-C4 | OCR settings (per-app answers, global switch, audit log) are not synced; local-only. | `shared/contracts/README.md` |
 
 ## Waiting on Fatima
 
@@ -68,6 +69,19 @@ Run on 2026-10-09 against the working tree, all passing, none skipped or failing
 | **Total** | | **97 passed, 0 failed** |
 
 Python suites need `pip install -r requirements.txt` in their folder.
+
+## Notes for Phase 4 (OCR), already decided
+
+Full detail in [docs/decisions/ocr-assist.md](decisions/ocr-assist.md), "Consent flow".
+
+**Prompt wording (exact):**
+
+> Digital Life Analyzer can read the window text to understand what you're doing in \<App\>. The picture is never saved and is deleted within 5 seconds. Allow?
+> **[Always for \<App\>]  [Just this time]  [Never]**
+
+**Fixed blocklist, OCR never runs and no prompt appears (the user cannot enable these):** password managers; banking and payment sites; private or incognito windows; the lock screen.
+
+**Still to decide in Phase 4:** the prompt-limit numbers (proposal: once per app per day, 3 per day overall, treat as Never after 3 days in a row of no real answer), the per-window capture interval N, the exact blocklist contents, the OCR settings screen, and the new migration for the audit log and the remembered per-app answers.
 
 ## Next: Phase 1, activity collection
 
