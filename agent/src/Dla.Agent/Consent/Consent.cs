@@ -4,8 +4,11 @@ namespace Dla.Agent.Consent;
 
 public static class ConsentText
 {
-    /// <summary>Bump when the wording changes materially; existing users are then asked again.</summary>
-    public const int Version = 1;
+    /// <summary>
+    /// Bump when the wording changes materially; existing users are then asked again.
+    /// 1: first version. 2: added the sentence about the optional "read this window's text" question (OCR).
+    /// </summary>
+    public const int Version = 2;
 
     public const string Title = "Digital Life Analyzer — your privacy";
 
@@ -25,6 +28,9 @@ WHERE YOUR DATA GOES
   • The raw records stay on this PC only.
   • Only encrypted summaries (for example, time per category per hour) are ever uploaded.
   • Tracking and categorization work with the internet unplugged.
+
+IF A WINDOW TITLE IS UNCLEAR
+  • Later, if a window's title is unclear, DLA may ask whether it can read that window's text on this PC (the picture is never saved and is deleted within 5 seconds); you can answer Always, Just this time or Never, and change your answer later.
 
 YOUR CONTROL
   • Pause or resume recording at any time from the tray icon.

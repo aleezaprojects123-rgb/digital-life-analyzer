@@ -134,12 +134,19 @@ public sealed class ConsentForm : Form
         Close();
     }
 
-    private static string StatusLine(ConsentFormMode mode, ConsentRecord r) => mode switch
+    public static string StatusLine(ConsentFormMode mode, ConsentRecord r)
     {
-        ConsentFormMode.FirstRun => "Please read this before DLA starts.",
-        ConsentFormMode.ReviewAccepted => $"You accepted on {r.AcceptedAt:f} (text version {r.TextVersion}). Recording is allowed.",
-        _ => r.State == ConsentState.Withdrawn
-            ? $"You withdrew consent on {r.WithdrawnAt:f}. Nothing is being recorded."
-            : "Consent has not been given. Nothing is being recorded."
-    };
+        // Accepted an earlier wording: consent is no longer valid until the new text is accepted.
+        var outdated = r.State == ConsentState.Accepted && r.TextVersion != ConsentText.Version;
+        return mode switch
+        {
+            ConsentFormMode.FirstRun => outdated
+                ? "The privacy text has changed since you accepted it. Please read it again."
+                : "Please read this before DLA starts.",
+            ConsentFormMode.ReviewAccepted => $"You accepted on {r.AcceptedAt:f} (text version {r.TextVersion}). Recording is allowed.",
+            _ when r.State == ConsentState.Withdrawn => $"You withdrew consent on {r.WithdrawnAt:f}. Nothing is being recorded.",
+            _ when outdated => $"The privacy text changed after you accepted it (you accepted version {r.TextVersion}). Nothing is being recorded until you accept the new text.",
+            _ => "Consent has not been given. Nothing is being recorded."
+        };
+    }
 }

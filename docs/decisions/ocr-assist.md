@@ -121,7 +121,7 @@ These are a product decision by Aleeza. They do not depend on the user's answers
 
 **10. Language.** English (en-US) only at launch (see below).
 
-**What this does not change:** the trigger policy, the 5-second rule, "label and confidence only", the audit log requirement, or any Phase 0 code.
+**What this does not change:** the trigger policy, the 5-second rule, "label and confidence only", or the audit log requirement. The only code touched is the first-run consent text, which now has one sentence about this prompt (consent text version 2).
 
 ## Launch language decision
 
@@ -147,6 +147,6 @@ These are a product decision by Aleeza. They do not depend on the user's answers
 - The per-window capture interval N and the prompt-limit numbers (once per app per day, 3 per day, 3 days in a row) (Phase 4).
 - The audit-log and per-app-answer schema (new migration) and the exact OCR settings screen (Phase 4).
 - The exact blocklist contents and how it is updated (Phase 4).
-- Whether the first-run consent text should mention that an optional OCR prompt may appear later. This decision does not change that text or its version number; if the wording changes materially, the consent-text version is bumped.
+- ~~Whether the first-run consent text should mention the optional OCR prompt.~~ **Done:** the first-run consent text (version 2) now has one sentence saying that, if a window title is unclear, DLA may ask to read that window's text on this PC (never saved, deleted within 5 seconds), and that the user can answer Always, Just this time or Never and change it later. Everyone who accepted version 1 is asked again.
 - Revisit "label and confidence only" in Phase 4.
 - The audit log and the OCR settings are local-only, so they cannot appear in the web dashboard (OQ-C4, and the log is never uploaded).

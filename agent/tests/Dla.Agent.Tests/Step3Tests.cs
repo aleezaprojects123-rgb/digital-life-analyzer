@@ -78,6 +78,52 @@ public class ConsentTests
     }
 
     [Fact]
+    public void Consent_text_version_is_2_and_the_text_mentions_the_optional_window_text_question()
+    {
+        Assert.Equal(2, ConsentText.Version);
+        var body = ConsentText.Body;
+        Assert.Contains("unclear", body);
+        Assert.Contains("read that window's text", body);
+        Assert.Contains("never saved", body);
+        Assert.Contains("5 seconds", body);
+        Assert.Contains("Always, Just this time or Never", body);
+        Assert.Contains("change your answer later", body);
+        // the promises that were already there are still there
+        Assert.Contains("Keystrokes", body);
+        Assert.Contains("Screenshots", body);
+        Assert.Contains("encrypted summaries", body);
+        Assert.Contains("DLA records nothing until you press Accept.", body);
+    }
+
+    [Fact]
+    public void Someone_who_accepted_version_1_must_accept_again_and_is_told_why()
+    {
+        var v1 = new ConsentRecord(ConsentState.Accepted, 1, DateTimeOffset.Now, null, null);
+        Assert.False(v1.IsValidAccepted);
+        Assert.False(RecordingGate.CanRecord(v1, new AgentSettings(false)));
+
+        Assert.Contains("changed", Dla.Agent.Tray.ConsentForm.StatusLine(Dla.Agent.Tray.ConsentFormMode.FirstRun, v1));
+        var inactive = Dla.Agent.Tray.ConsentForm.StatusLine(Dla.Agent.Tray.ConsentFormMode.ReviewInactive, v1);
+        Assert.Contains("changed", inactive);
+        Assert.DoesNotContain("has not been given", inactive);
+    }
+
+    [Fact]
+    public void Status_lines_for_the_other_consent_states_are_unchanged()
+    {
+        var none = ConsentRecord.None;
+        Assert.Equal("Please read this before DLA starts.", Dla.Agent.Tray.ConsentForm.StatusLine(Dla.Agent.Tray.ConsentFormMode.FirstRun, none));
+        Assert.Contains("has not been given", Dla.Agent.Tray.ConsentForm.StatusLine(Dla.Agent.Tray.ConsentFormMode.ReviewInactive, none));
+
+        var withdrawn = new ConsentRecord(ConsentState.Withdrawn, ConsentText.Version, DateTimeOffset.Now, null, DateTimeOffset.Now);
+        Assert.Contains("withdrew", Dla.Agent.Tray.ConsentForm.StatusLine(Dla.Agent.Tray.ConsentFormMode.ReviewInactive, withdrawn));
+
+        using var d = new TempDir();
+        var current = new ConsentStore(d.Path).Accept();
+        Assert.Contains("Recording is allowed", Dla.Agent.Tray.ConsentForm.StatusLine(Dla.Agent.Tray.ConsentFormMode.ReviewAccepted, current));
+    }
+
+    [Fact]
     public void Corrupt_consent_file_means_no_consent()
     {
         using var d = new TempDir();
