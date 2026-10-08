@@ -46,6 +46,26 @@ How it works:
 - Local state lives in `%LOCALAPPDATA%\DLA` (override with `DLA_DATA_DIR`): `consent.json`, `settings.json` (paused flag), `lifecycle.jsonl` (markers), `agent.log`. Step 5 moves consent, settings and markers into SQLite.
 - Windows 11 may hide a new tray icon in the overflow (^) area. Drag it out once to keep it always visible; an app cannot force this.
 
+### Step 3 test results
+
+Run by Aleeza on Windows 10 Pro, 2026-10-09. All passed.
+
+| Check | Result |
+|---|---|
+| Unit tests | 23/23 at the time (27/27 after the lifecycle-log newline hardening below) |
+| Consent screen appears first, nothing recorded before Accept | Pass |
+| Decline exits cleanly, no auto-start | Pass |
+| Accept registers auto-start and shows the tray icon | Pass |
+| Tray menu: Pause, Open dashboard, Consent and privacy (no Quit) | Pass |
+| Pause / Resume | Pass |
+| Withdraw removes auto-start, process stays alive; re-Accept restores it | Pass |
+| Single instance (second copy creates no second agent) | Pass |
+| Kill the agent: restarts by itself; `crash_detected` marker written | Pass |
+| Sleep and wake: `suspend` and `resume` markers | Pass |
+| Logoff and restart: `clean_shutdown`, agent starts again by itself, no `crash_detected` | Pass |
+
+Lifecycle log format: `lifecycle.jsonl` holds exactly one JSON object per line, each ended by a single `\n`. If a crash leaves a last line without a newline, the next record first adds one, so it never merges into the torn line (covered by unit tests).
+
 Developer overrides (never set in production): `DLA_DATA_DIR` (data folder) and `DLA_AUTOSTART_SUBKEY` (registry key for the Run entry).
 
 ## Hard rules (from the spec)

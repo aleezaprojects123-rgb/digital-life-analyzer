@@ -158,6 +158,75 @@ public class LifecycleTests
     }
 
     [Fact]
+    public void Each_record_is_one_json_object_followed_by_a_single_newline()
+    {
+        using var d = new TempDir();
+        var log = new LifecycleLog(d.Path);
+        log.Append(MarkerKind.Start, "s1");
+        log.Append(MarkerKind.Suspend, "s1", "detail with \"quotes\" and \nnewline");
+        log.Append(MarkerKind.CleanShutdown, "s1");
+
+        var text = File.ReadAllText(Path.Combine(d.Path, "lifecycle.jsonl"));
+        Assert.EndsWith("\n", text);
+        Assert.DoesNotContain("\r", text);
+        var lines = text.Split('\n');
+        Assert.Equal(4, lines.Length);          // 3 records + the empty piece after the final newline
+        Assert.Equal("", lines[^1]);
+        foreach (var line in lines.Take(3))
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(line); // each line is exactly one JSON value
+            Assert.Equal(System.Text.Json.JsonValueKind.Object, doc.RootElement.ValueKind);
+        }
+        Assert.Equal(3, log.ReadAll().Count);
+    }
+
+    [Fact]
+    public void File_without_trailing_newline_gets_one_before_the_next_record()
+    {
+        using var d = new TempDir();
+        var path = Path.Combine(d.Path, "lifecycle.jsonl");
+        var log = new LifecycleLog(d.Path);
+        log.Append(MarkerKind.Start, "s1");
+        File.WriteAllText(path, File.ReadAllText(path).TrimEnd('\n')); // simulate a record cut off before its newline
+
+        log.Append(MarkerKind.CleanShutdown, "s1");
+
+        var text = File.ReadAllText(path);
+        Assert.EndsWith("\n", text);
+        Assert.Equal(2, text.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length);
+        Assert.Equal([MarkerKind.Start, MarkerKind.CleanShutdown], log.ReadAll().Select(m => m.Kind));
+    }
+
+    [Fact]
+    public void Torn_line_does_not_swallow_the_next_record()
+    {
+        using var d = new TempDir();
+        var path = Path.Combine(d.Path, "lifecycle.jsonl");
+        var log = new LifecycleLog(d.Path);
+        log.Append(MarkerKind.Start, "s1");
+        File.AppendAllText(path, "{\"At\":\"2026-10-09T"); // crash mid-write, no newline
+
+        log.Append(MarkerKind.CleanShutdown, "s2");
+
+        var kinds = log.ReadAll().Select(m => m.Kind).ToArray();
+        Assert.Equal([MarkerKind.Start, MarkerKind.CleanShutdown], kinds); // torn line skipped, new record intact
+    }
+
+    [Fact]
+    public void Appending_creates_the_file_and_each_call_adds_exactly_one_line()
+    {
+        using var d = new TempDir();
+        var path = Path.Combine(d.Path, "lifecycle.jsonl");
+        var log = new LifecycleLog(d.Path);
+        Assert.False(File.Exists(path));
+        for (var i = 1; i <= 5; i++)
+        {
+            log.Append(MarkerKind.Resume, "s1");
+            Assert.Equal(i, File.ReadAllLines(path).Length);
+        }
+    }
+
+    [Fact]
     public void Trim_keeps_only_recent_lines()
     {
         using var d = new TempDir();

@@ -35,12 +35,21 @@ public sealed class LifecycleLog
 
     public void Append(string kind, string sessionId, string? detail = null, DateTimeOffset? at = null)
     {
-        var line = JsonSerializer.Serialize(new LifecycleMarker(at ?? _now(), kind, sessionId, detail));
+        // One compact JSON object + "\n". If a previous crash left a torn last line with no newline, terminate it
+        // first so this record starts on its own line instead of being glued onto (and lost with) the torn one.
+        var json = JsonSerializer.Serialize(new LifecycleMarker(at ?? _now(), kind, sessionId, detail));
         lock (Gate)
         {
-            using var fs = new FileStream(_path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
-            using var w = new StreamWriter(fs);
-            w.WriteLine(line);
+            using var fs = new FileStream(_path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite);
+            var needsNewline = false;
+            if (fs.Length > 0)
+            {
+                fs.Seek(-1, SeekOrigin.End);
+                needsNewline = fs.ReadByte() != '\n';
+            }
+            fs.Seek(0, SeekOrigin.End);
+            var bytes = new System.Text.UTF8Encoding(false).GetBytes((needsNewline ? "\n" : "") + json + "\n");
+            fs.Write(bytes, 0, bytes.Length); // single write: one record is never split across calls
         }
     }
 
