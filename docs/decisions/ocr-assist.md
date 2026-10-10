@@ -27,7 +27,7 @@ Owner: Aleeza (agent). Spec: FR-30, "Efficient OCR Assist", "Privacy and Scope",
    - What is kept: a category label and a confidence. The text itself is never stored, logged or uploaded.
 4. **When it may run:** see "Trigger policy" below. It is a strict allow-list: every condition must hold, and any "never" case blocks it.
 5. **Audit log.** Every capture adds a row to `ocr_audit_log`: time, app, window title (as masked by the sensitive-title rules), trigger reason, number of characters read (a count only), resulting label, confidence, and how many milliseconds the image lived. No text and no image columns exist. It stays on the PC and is never uploaded. **Every consent answer and every change to an answer is logged too** (see "Consent flow"). That needs a schema change that is **not built yet**: the Phase 0 table has one row per capture with capture-only columns that cannot be empty.
-6. **Where the user sees the audit log and the OCR settings.** The tray menu is fixed at Pause/Resume, Open dashboard and Consent and privacy. The audit log and the OCR settings are shown inside the agent's Consent and privacy window. They are **not** on the web dashboard's settings page, because OCR settings are local-only (OQ-C4) and the dashboard cannot read them. The exact screen is decided when OCR is built.
+6. **Where the user sees the audit log and the OCR settings.** The tray menu no longer has a Consent and privacy entry (changed 2026-10-10: consent belongs on the website). **OPEN: with that window unreachable from the tray, there is currently no local screen for the audit log and the OCR settings, and they cannot live on the website because they are local-only (OQ-C4). A local settings screen, or a decision to sync them, is needed before Phase 4.** The audit log and the OCR settings were planned inside the agent's Consent and privacy window. They are **not** on the web dashboard's settings page, because OCR settings are local-only (OQ-C4) and the dashboard cannot read them. The exact screen is decided when OCR is built.
 7. **Consent.** OCR needs a separate, plain-language, per-app answer from the user, collected **just in time**: a small prompt the first time OCR would help in an app. It is not collected only in Settings. See "Consent flow" below.
 
 ## Trigger policy
@@ -105,7 +105,7 @@ Owner: Aleeza (agent). Spec: FR-30, "Efficient OCR Assist", "Privacy and Scope",
 - If the same app has been prompted on **3 days in a row** and the user only chose "Just this time" or dismissed it, treat it as **Never** until the user changes it in Settings. This parallels the nudge rule in FR-21 (off by default after 2 ignores).
 - While a prompt is waiting for an answer, no second prompt is shown.
 
-**6. Changing answers later.** In the OCR settings (inside the agent's Consent and privacy window, see Decision item 6), the user can: see every app they answered for, change any answer (Always / Never) or remove it so they are asked again, and **switch OCR off globally**. With OCR off globally, no prompt appears and nothing is captured.
+**6. Changing answers later.** In the OCR settings (location open, see Decision item 6), the user can: see every app they answered for, change any answer (Always / Never) or remove it so they are asked again, and **switch OCR off globally**. With OCR off globally, no prompt appears and nothing is captured.
 
 **7. Fixed built-in blocklist (the user cannot enable these).** OCR never runs, and the prompt never appears, for:
 - password managers;

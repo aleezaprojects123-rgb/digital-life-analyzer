@@ -53,3 +53,20 @@ The spec (docs/) requires local-first privacy, nothing recorded before consent, 
 
 - Native messaging vs localhost for the extension link (Phase 1).
 - Behaviour when the website terms change (re-consent prompt on the website; local consent is re-asked only when the consent-text version changes).
+
+## Update 2026-10-10: consent only on the website (partly built, pending decisions)
+
+Aleeza's new requirement: consent and terms are shown and accepted **only on the official website**; the agent
+must not record until that consent is verified, must stop on withdrawal, and must not restart monitoring without
+fresh consent. This builds on the flow above and changes one point: the website's verified consent, not a local
+screen, is what enables recording.
+
+**Done in the agent (2026-10-10):** double-click and single-click on the tray icon open nothing; the tray menu no
+longer has Consent and privacy; the menu is Pause/Resume and Open Dashboard (third action pending); Open Dashboard
+opens only an https address and the official address is not set yet.
+
+**Not done, and why:** there is no website or backend in this repository, and the agent has no network, `dla://`
+or token code. Verified website consent needs Interface D and the backend answers G1, G3, A1, D1 and D3
+(see shared/contracts/README.md). Until then the agent keeps its existing first-run consent window and consent
+file; both are still hand-editable and are not a website-verified consent. Withdrawal and re-consent from the
+website cannot reach the agent yet. Decisions needed from Aleeza are listed in the reply that accompanied this change.

@@ -20,7 +20,7 @@ public sealed class AgentContext : ApplicationContext
     private readonly AutoStart _autoStart = CreateAutoStart();
     private readonly ExtensionLink _extension;
     private readonly NotifyIcon _tray;
-    private readonly ToolStripMenuItem _pauseItem;
+    private ToolStripMenuItem _pauseItem = null!; // set while the menu is built from TrayMenuModel
     private readonly Icon _iconRecording = TrayIcons.Make(TrayIcons.Recording);
     private readonly Icon _iconPaused = TrayIcons.Make(TrayIcons.Paused);
     private readonly Icon _iconInactive = TrayIcons.Make(TrayIcons.Inactive);
@@ -38,17 +38,26 @@ public sealed class AgentContext : ApplicationContext
         _settings = settingsStore.Load();
         _extension = new ExtensionLink(log, sessionId);
 
-        _pauseItem = new ToolStripMenuItem("Pause", null, (_, _) => TogglePause());
-        var dashboard = new ToolStripMenuItem("Open dashboard", null, (_, _) => MessageBox.Show(
-            "The dashboard is a placeholder in Phase 0. It will open the web dashboard in a later phase.",
-            "Digital Life Analyzer", MessageBoxButtons.OK, MessageBoxIcon.Information));
-        var privacy = new ToolStripMenuItem("Consent and privacy", null, (_, _) => ShowConsentAndPrivacy());
-
+        // The menu is built from TrayMenuModel so what the user sees is exactly what the tests pin down.
+        // No Consent and privacy, no Quit. Clicking or double-clicking the icon does nothing: consent is on the website.
         var menu = new ContextMenuStrip();
-        menu.Items.AddRange([_pauseItem, dashboard, privacy]); // intentionally no Quit
+        foreach (var (action, label) in TrayMenuModel.Entries(_settings.Paused))
+        {
+            var item = new ToolStripMenuItem(label);
+            switch (action)
+            {
+                case TrayAction.PauseResume:
+                    item.Click += (_, _) => TogglePause();
+                    _pauseItem = item;
+                    break;
+                case TrayAction.OpenDashboard:
+                    item.Click += (_, _) => OpenDashboard();
+                    break;
+            }
+            menu.Items.Add(item);
+        }
 
         _tray = new NotifyIcon { ContextMenuStrip = menu, Visible = true };
-        _tray.DoubleClick += (_, _) => ShowConsentAndPrivacy();
 
         SystemEvents.SessionEnded += OnSessionEnded;
         SystemEvents.PowerModeChanged += OnPowerModeChanged;
@@ -128,29 +137,13 @@ public sealed class AgentContext : ApplicationContext
         RefreshUi();
     }
 
-    private void ShowConsentAndPrivacy()
+    private static void OpenDashboard()
     {
-        var mode = _consent.IsValidAccepted ? ConsentFormMode.ReviewAccepted : ConsentFormMode.ReviewInactive;
-        using var form = new ConsentForm(mode, _consent);
-        form.ShowDialog();
-
-        if (form.Choice == ConsentChoice.Withdraw)
-        {
-            var sure = MessageBox.Show(
-                "Withdraw consent?\n\nRecording stops now and DLA will no longer start when you log in.",
-                "Digital Life Analyzer", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2);
-            if (sure != DialogResult.Yes) return;
-            _consent = _consentStore.Withdraw();
-            _autoStart.Disable();
-            Log.Write("Consent withdrawn; recording stopped; auto-start removed.");
-        }
-        else if (form.Choice == ConsentChoice.Accept)
-        {
-            _consent = _consentStore.Accept();
-            _autoStart.Enable(Environment.ProcessPath!);
-            Log.Write("Consent accepted from tray; auto-start registered.");
-        }
-        RefreshUi();
+        if (DashboardLink.TryOpen(DashboardLink.OfficialUrl)) return;
+        MessageBox.Show(
+            "The DLA dashboard address has not been set yet, so there is nothing to open. " +
+            "It will open the official DLA website once the website is available.",
+            "Digital Life Analyzer", MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 
     private void RefreshUi()
@@ -159,7 +152,7 @@ public sealed class AgentContext : ApplicationContext
         _extension.Check(DateTimeOffset.Now, canRecord);
 
         _pauseItem.Enabled = _consent.IsValidAccepted;
-        _pauseItem.Text = _settings.Paused ? "Resume" : "Pause";
+        _pauseItem.Text = TrayMenuModel.Entries(_settings.Paused).First(e => e.Action == TrayAction.PauseResume).Label;
 
         if (!_consent.IsValidAccepted)
         {
@@ -174,7 +167,7 @@ public sealed class AgentContext : ApplicationContext
         else
         {
             _tray.Icon = _iconRecording;
-            _tray.Text = "Digital Life Analyzer — running";
+            _tray.Text = "Digital Life Analyzer — ready (recording allowed)";
         }
     }
 

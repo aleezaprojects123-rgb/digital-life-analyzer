@@ -56,7 +56,7 @@ Run by Aleeza on Windows 10 Pro, 2026-10-09. All passed.
 | Consent screen appears first, nothing recorded before Accept | Pass |
 | Decline exits cleanly, no auto-start | Pass |
 | Accept registers auto-start and shows the tray icon | Pass |
-| Tray menu: Pause, Open dashboard, Consent and privacy (no Quit) | Pass |
+| Tray menu: Pause, Open dashboard, Consent and privacy (no Quit). *Changed 2026-10-10: now Pause/Resume and Open Dashboard only; double-click opens nothing.* | Pass (before the change) |
 | Pause / Resume | Pass |
 | Withdraw removes auto-start, process stays alive; re-Accept restores it | Pass |
 | Single instance (second copy creates no second agent) | Pass |
