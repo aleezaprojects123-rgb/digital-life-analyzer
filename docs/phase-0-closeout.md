@@ -10,7 +10,7 @@ Every statement below was checked against the files in this repository or agains
 |---|---|---|
 | Language choice | C# on .NET 10 (current LTS), WinForms on `net10.0-windows`. Reason: lowest memory against the 150/250 MB budget, native Windows hooks and signing, less antivirus risk than a frozen Python bundle. Main risk: the model tokenizer is Python-first, handled by a Python export step plus a C# parity test in Phase 3. | `agent/src/Dla.Agent/Dla.Agent.csproj` |
 | Repo skeleton | `agent/`, `extension/`, `shared/`, `docs/` (13 spec files), `.gitignore`, README | repo root |
-| Agent shell | First-run consent screen (Accept/Decline, version and timestamp saved; consent text is now version 2, which adds one sentence about the optional "read this window's text" question; Decline removes any auto-start entry, so a decline never starts at login); per-user auto-start through `HKCU\...\Run`; tray menu with Pause/Resume and Open Dashboard only (Consent and privacy removed and double-click no longer opens consent on 2026-10-10; the third action is pending; dashboard address not set), no Quit; supervisor that restarts a crashed agent (2 s, 5 s, 30 s, 30 s, then every 5 minutes with its own tray icon); clean-shutdown, suspend and resume markers; crash detection at next start; single instance; extension-silence gap markers | `agent/src/Dla.Agent/` |
+| Agent shell | Consent handling (changed 2026-10-10: the agent has no consent window; recording needs consent accepted on the official website, which is not built yet, so the agent currently exits at start showing nothing; consent text is now version 3; any start-at-login entry is removed when there is no valid consent); per-user auto-start through `HKCU\...\Run`; tray menu with Pause/Resume and Open Dashboard only (Consent and privacy removed and double-click no longer opens consent on 2026-10-10; the third action is pending; dashboard address not set), no Quit; supervisor that restarts a crashed agent (2 s, 5 s, 30 s, 30 s, then every 5 minutes with its own tray icon); clean-shutdown, suspend and resume markers; crash detection at next start; single instance; extension-silence gap markers | `agent/src/Dla.Agent/` |
 | Extension shell | MV3, permissions only `alarms` and `storage`, no host permissions or content scripts, `incognito: not_allowed`, 30-second heartbeat logged to its console, inactive until a consent flag (stub) is true, agent link is a placeholder | `extension/` |
 | SQLite layer | Versioned migrations (8 tables plus `schema_migrations`), data-access classes, retention purge (default 30 days), WAL and secure-delete on, no table able to hold keystrokes or screenshots | `agent/src/Dla.Agent/Data/` |
 | Model benchmark plan | Plan with gates, measurement method, labeled-set design, verified licenses and sizes of the three candidates; Python tools under `agent/tools/model_benchmark/` tested on synthetic data only | `docs/decisions/model-benchmark-plan.md` |
@@ -62,11 +62,11 @@ Run on 2026-10-09 against the working tree, all passing, none skipped or failing
 
 | Suite | Command | Result |
 |---|---|---|
-| Agent (C#) | `cd agent` then `dotnet test` | 79 passed |
+| Agent (C#) | `cd agent` then `dotnet test` | 86 passed |
 | Extension (Node) | `cd extension` then `npm test` | 7 passed |
 | Benchmark tools (Python, synthetic data) | `cd agent/tools/model_benchmark` then `python -m unittest discover -s tests` | 15 passed |
 | Contracts (Python) | `cd shared/contracts` then `python -m unittest discover -s tests` | 22 passed |
-| **Total** | | **123 passed, 0 failed** |
+| **Total** | | **130 passed, 0 failed** |
 
 Python suites need `pip install -r requirements.txt` in their folder.
 

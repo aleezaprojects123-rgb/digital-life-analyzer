@@ -54,19 +54,29 @@ The spec (docs/) requires local-first privacy, nothing recorded before consent, 
 - Native messaging vs localhost for the extension link (Phase 1).
 - Behaviour when the website terms change (re-consent prompt on the website; local consent is re-asked only when the consent-text version changes).
 
-## Update 2026-10-10: consent only on the website (partly built, pending decisions)
+## Update 2026-10-10: consent only on the website (agent side built; website side not built)
 
-Aleeza's new requirement: consent and terms are shown and accepted **only on the official website**; the agent
-must not record until that consent is verified, must stop on withdrawal, and must not restart monitoring without
-fresh consent. This builds on the flow above and changes one point: the website's verified consent, not a local
-screen, is what enables recording.
+Aleeza's requirement: consent and terms are shown and accepted **only on the official website**. The agent must not
+record, and must not show a green running icon, until that consent is verified; it stops on withdrawal and never
+restarts monitoring without fresh consent. The agent itself shows no consent text.
 
-**Done in the agent (2026-10-10):** double-click and single-click on the tray icon open nothing; the tray menu no
-longer has Consent and privacy; the menu is Pause/Resume and Open Dashboard (third action pending); Open Dashboard
-opens only an https address and the official address is not set yet.
+**Built in the agent (2026-10-10):**
+- No consent window exists in the agent any more. The tray icon opens nothing on click or double-click.
+- The tray menu is exactly Pause/Resume and Open Dashboard.
+- At start the agent checks its consent record. Unless it is Accepted, for the current text version (3), **and**
+  marked as given on the website, the agent shows nothing, records nothing, removes any start-at-login entry and
+  exits. So no tray icon and no green icon appear until website consent is on record, and a PC restart after a
+  decline or no consent starts nothing.
+- A consent record written by an earlier build (no source) is not valid, so an old local acceptance no longer
+  activates the agent.
+- Withdraw and decline keep the record invalid.
 
-**Not done, and why:** there is no website or backend in this repository, and the agent has no network, `dla://`
-or token code. Verified website consent needs Interface D and the backend answers G1, G3, A1, D1 and D3
-(see shared/contracts/README.md). Until then the agent keeps its existing first-run consent window and consent
-file; both are still hand-editable and are not a website-verified consent. Withdrawal and re-consent from the
-website cannot reach the agent yet. Decisions needed from Aleeza are listed in the reply that accompanied this change.
+**Not built, and why:** there is no website or backend in this repository, and the agent has no network, `dla://`
+or token code. The only function that can mark consent as given on the website is internal and nothing calls it
+yet. The handshake (Interface D) must: open via `dla://activate`, exchange the one-time code, receive a
+**server-signed consent assertion** (consent version, time, device), verify its signature, and only then record it.
+Until the signature check exists, `consent.json` can still be written by hand by the user or by malware running as
+the user; the tests pin this limit. Needs Fatima: G1, G3, A1, D1, D3 plus a decision on the signing key.
+
+**Consequence:** until the website exists the agent cannot be activated, so it cannot be demonstrated end to end.
+Phase 1 recording work will be tested through unit tests, not through a running tray agent.

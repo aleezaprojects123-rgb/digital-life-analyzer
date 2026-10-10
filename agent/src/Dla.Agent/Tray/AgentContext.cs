@@ -95,9 +95,28 @@ public sealed class AgentContext : ApplicationContext
     }
 
     /// <summary>
-    /// Starts the agent. Returns null when the user declines consent (the process then exits, does nothing,
-    /// and nothing is registered to start at login). <paramref name="restarted"/> is true when the supervisor
-    /// relaunched the agent after a crash: the consent window is not shown again in that case.
+    /// What the agent does when it is started without consent that was accepted on the official website: nothing.
+    /// No window, no tray icon, nothing recorded, and no start at login (any Run entry is removed). The process then
+    /// exits cleanly, so the supervisor does not restart it.
+    /// </summary>
+    public static void RecordNotActivated(LifecycleLog log, string sessionId, AutoStart autoStart)
+    {
+        try
+        {
+            autoStart.Disable();
+        }
+        catch (Exception ex)
+        {
+            Log.Write($"Could not remove the auto-start entry: {ex.Message}");
+        }
+        log.Append(MarkerKind.Start, sessionId, "no-website-consent");
+        log.Append(MarkerKind.CleanShutdown, sessionId, "no-website-consent");
+        Log.Write("No consent accepted on the website: not recording, no tray icon, no auto-start; exiting.");
+    }
+
+    /// <summary>
+    /// Starts the agent. Returns null (and the process exits, showing nothing) unless valid consent that was accepted
+    /// on the official website is on record. The agent never asks for consent itself.
     /// </summary>
     public static AgentContext? Create(string sessionId, bool restarted)
     {
@@ -110,16 +129,10 @@ public sealed class AgentContext : ApplicationContext
         var previous = log.PreviousRunStatus(sessionId);
         var consent = consentStore.Load();
 
-        if (!consent.IsValidAccepted && !restarted)
+        if (!consent.IsValidAccepted)
         {
-            using var form = new ConsentForm(ConsentFormMode.FirstRun, consent);
-            form.ShowDialog();
-            if (form.Choice != ConsentChoice.Accept)
-            {
-                RecordDecline(consentStore, log, sessionId, CreateAutoStart());
-                return null;
-            }
-            consent = consentStore.Accept();
+            RecordNotActivated(log, sessionId, CreateAutoStart());
+            return null;
         }
 
         log.Append(MarkerKind.Start, sessionId, restarted ? "restarted-by-watchdog" : null);

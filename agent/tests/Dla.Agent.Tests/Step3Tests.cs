@@ -33,17 +33,18 @@ public class ConsentTests
     }
 
     [Fact]
-    public void Accept_saves_timestamp_and_text_version()
+    public void Website_acceptance_saves_timestamp_version_and_source()
     {
         using var d = new TempDir();
         var clock = new FakeClock();
         var store = new ConsentStore(d.Path, clock.Func);
-        store.Accept();
+        store.RecordWebsiteConsent();
 
         var loaded = new ConsentStore(d.Path).Load();
         Assert.Equal(ConsentState.Accepted, loaded.State);
         Assert.Equal(ConsentText.Version, loaded.TextVersion);
         Assert.Equal(clock.Now, loaded.AcceptedAt);
+        Assert.Equal(ConsentSource.Website, loaded.Source);
         Assert.True(RecordingGate.CanRecord(loaded, new AgentSettings(false)));
     }
 
@@ -55,7 +56,7 @@ public class ConsentTests
         store.Decline();
         Assert.False(RecordingGate.CanRecord(store.Load(), new AgentSettings(false)));
 
-        store.Accept();
+        store.RecordWebsiteConsent();
         var withdrawn = store.Withdraw();
         Assert.Equal(ConsentState.Withdrawn, withdrawn.State);
         Assert.NotNull(withdrawn.WithdrawnAt);
@@ -66,61 +67,107 @@ public class ConsentTests
     public void Paused_blocks_recording_even_with_consent()
     {
         using var d = new TempDir();
-        var consent = new ConsentStore(d.Path).Accept();
+        var consent = new ConsentStore(d.Path).RecordWebsiteConsent();
         Assert.False(RecordingGate.CanRecord(consent, new AgentSettings(Paused: true)));
     }
 
     [Fact]
-    public void Older_consent_text_version_is_not_valid()
+    public void Older_consent_text_version_is_not_valid_even_from_the_website()
     {
-        var old = new ConsentRecord(ConsentState.Accepted, ConsentText.Version - 1, DateTimeOffset.Now, null, null);
+        var old = new ConsentRecord(ConsentState.Accepted, ConsentText.Version - 1, DateTimeOffset.Now, null, null, ConsentSource.Website);
         Assert.False(old.IsValidAccepted);
     }
 
     [Fact]
-    public void Consent_text_version_is_2_and_the_text_mentions_the_optional_window_text_question()
+    public void Consent_text_is_version_3_and_matches_the_new_flow()
     {
-        Assert.Equal(2, ConsentText.Version);
+        Assert.Equal(3, ConsentText.Version);
         var body = ConsentText.Body;
-        Assert.Contains("unclear", body);
-        Assert.Contains("read that window's text", body);
-        Assert.Contains("never saved", body);
-        Assert.Contains("5 seconds", body);
-        Assert.Contains("Always, Just this time or Never", body);
-        Assert.Contains("change your answer later", body);
-        // the promises that were already there are still there
+        // the earlier promises are still there
         Assert.Contains("Keystrokes", body);
         Assert.Contains("Screenshots", body);
         Assert.Contains("encrypted summaries", body);
-        Assert.Contains("DLA records nothing until you press Accept.", body);
+        Assert.Contains("read that window's text", body);
+        Assert.Contains("Always, Just this time or Never", body);
+        // consent and withdrawal are on the website now, not the tray
+        Assert.Contains("Withdraw your consent at any time on the DLA website", body);
+        Assert.Contains("DLA records nothing until you accept on the DLA website.", body);
+        Assert.DoesNotContain("from the tray icon. Recording stops", body);
+        Assert.DoesNotContain("press Accept", body);
     }
 
     [Fact]
-    public void Someone_who_accepted_version_1_must_accept_again_and_is_told_why()
+    public void Consent_accepted_locally_never_counts_only_the_website_does()
     {
-        var v1 = new ConsentRecord(ConsentState.Accepted, 1, DateTimeOffset.Now, null, null);
-        Assert.False(v1.IsValidAccepted);
-        Assert.False(RecordingGate.CanRecord(v1, new AgentSettings(false)));
+        var local = new ConsentRecord(ConsentState.Accepted, ConsentText.Version, DateTimeOffset.Now, null, null, ConsentSource.Local);
+        Assert.False(local.IsValidAccepted);
+        Assert.False(RecordingGate.CanRecord(local, new AgentSettings(false)));
 
-        Assert.Contains("changed", Dla.Agent.Tray.ConsentForm.StatusLine(Dla.Agent.Tray.ConsentFormMode.FirstRun, v1));
-        var inactive = Dla.Agent.Tray.ConsentForm.StatusLine(Dla.Agent.Tray.ConsentFormMode.ReviewInactive, v1);
-        Assert.Contains("changed", inactive);
-        Assert.DoesNotContain("has not been given", inactive);
+        var website = local with { Source = ConsentSource.Website };
+        Assert.True(website.IsValidAccepted);
+        Assert.True(RecordingGate.CanRecord(website, new AgentSettings(false)));
     }
 
     [Fact]
-    public void Status_lines_for_the_other_consent_states_are_unchanged()
+    public void An_old_consent_file_without_a_source_is_not_valid_so_the_agent_stays_inactive()
     {
-        var none = ConsentRecord.None;
-        Assert.Equal("Please read this before DLA starts.", Dla.Agent.Tray.ConsentForm.StatusLine(Dla.Agent.Tray.ConsentFormMode.FirstRun, none));
-        Assert.Contains("has not been given", Dla.Agent.Tray.ConsentForm.StatusLine(Dla.Agent.Tray.ConsentFormMode.ReviewInactive, none));
-
-        var withdrawn = new ConsentRecord(ConsentState.Withdrawn, ConsentText.Version, DateTimeOffset.Now, null, DateTimeOffset.Now);
-        Assert.Contains("withdrew", Dla.Agent.Tray.ConsentForm.StatusLine(Dla.Agent.Tray.ConsentFormMode.ReviewInactive, withdrawn));
-
         using var d = new TempDir();
-        var current = new ConsentStore(d.Path).Accept();
-        Assert.Contains("Recording is allowed", Dla.Agent.Tray.ConsentForm.StatusLine(Dla.Agent.Tray.ConsentFormMode.ReviewAccepted, current));
+        // exactly what earlier builds wrote, including the stray computed field
+        File.WriteAllText(Path.Combine(d.Path, "consent.json"), """
+            { "State": "Accepted", "TextVersion": 3, "AcceptedAt": "2026-10-09T03:12:00+05:00",
+              "DeclinedAt": null, "WithdrawnAt": null, "IsValidAccepted": true }
+            """);
+        var loaded = new ConsentStore(d.Path).Load();
+        Assert.Equal(ConsentState.Accepted, loaded.State);
+        Assert.Equal(ConsentSource.Local, loaded.Source);
+        Assert.False(loaded.IsValidAccepted);
+    }
+
+    [Fact]
+    public void A_hand_written_valid_looking_file_is_still_only_as_trustworthy_as_the_file()
+    {
+        // KNOWN LIMIT, documented on purpose: until the website handshake adds a server-signed assertion,
+        // a person (or malware) running as the user can write Source=Website by hand. This test pins the behaviour
+        // so nobody assumes otherwise; the real fix needs the backend.
+        using var d = new TempDir();
+        File.WriteAllText(Path.Combine(d.Path, "consent.json"), $$"""
+            { "State": "Accepted", "TextVersion": {{ConsentText.Version}}, "AcceptedAt": "2026-10-09T03:12:00+05:00",
+              "DeclinedAt": null, "WithdrawnAt": null, "Source": "Website" }
+            """);
+        Assert.True(new ConsentStore(d.Path).Load().IsValidAccepted);
+    }
+
+    [Fact]
+    public void The_saved_file_does_not_contain_the_computed_valid_flag()
+    {
+        using var d = new TempDir();
+        new ConsentStore(d.Path).RecordWebsiteConsent();
+        var json = File.ReadAllText(Path.Combine(d.Path, "consent.json"));
+        Assert.DoesNotContain("IsValidAccepted", json);
+        Assert.Contains("\"Source\": \"Website\"", json);
+    }
+
+    [Fact]
+    public void Withdrawing_keeps_the_record_but_it_is_no_longer_valid()
+    {
+        using var d = new TempDir();
+        var store = new ConsentStore(d.Path);
+        store.RecordWebsiteConsent();
+        var after = store.Withdraw();
+        Assert.Equal(ConsentState.Withdrawn, after.State);
+        Assert.False(after.IsValidAccepted);
+        Assert.False(new ConsentStore(d.Path).Load().IsValidAccepted);
+    }
+
+    [Fact]
+    public void The_agent_has_no_local_way_to_accept_and_no_consent_window()
+    {
+        var asm = typeof(ConsentStore).Assembly;
+        // no public "Accept" on the store
+        Assert.DoesNotContain(typeof(ConsentStore).GetMethods(), m => m.Name == "Accept");
+        // no window class that could show the consent text
+        Assert.DoesNotContain(asm.GetTypes(), ty => ty.Name.Contains("ConsentForm", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(asm.GetTypes(), ty => typeof(System.Windows.Forms.Form).IsAssignableFrom(ty));
     }
 
     [Fact]
@@ -424,7 +471,7 @@ public class DeclineTests
         {
             var autoStart = new AutoStart(ScratchKey, "DlaTest");
             autoStart.Enable(@"C:\old\Dla.Agent.exe");                       // left behind by an earlier acceptance
-            new ConsentStore(d.Path).Accept();
+            new ConsentStore(d.Path).RecordWebsiteConsent();
             Assert.True(autoStart.IsEnabled);
 
             Dla.Agent.Tray.AgentContext.RecordDecline(new ConsentStore(d.Path), new LifecycleLog(d.Path), "s1", autoStart);

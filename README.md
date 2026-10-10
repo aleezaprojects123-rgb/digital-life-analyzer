@@ -31,7 +31,7 @@ dotnet test
 dotnet build src/Dla.Agent
 ```
 
-Run (first run shows the consent screen):
+Run (changed 2026-10-10: there is no consent window; without consent accepted on the website the agent exits at start and shows nothing, which is the expected result until the website exists):
 
 ```bash
 agent/src/Dla.Agent/bin/Debug/net10.0-windows/Dla.Agent.exe
@@ -57,6 +57,7 @@ Run by Aleeza on Windows 10 Pro, 2026-10-09. All passed.
 | Decline exits cleanly, no auto-start | Pass |
 | Accept registers auto-start and shows the tray icon | Pass |
 | Tray menu: Pause, Open dashboard, Consent and privacy (no Quit). *Changed 2026-10-10: now Pause/Resume and Open Dashboard only; double-click opens nothing.* | Pass (before the change) |
+| *Also changed 2026-10-10: the agent has no consent window; it needs consent accepted on the website (not built yet), so it exits at start showing nothing.* | n/a |
 | Pause / Resume | Pass |
 | Withdraw removes auto-start, process stays alive; re-Accept restores it | Pass |
 | Single instance (second copy creates no second agent) | Pass |

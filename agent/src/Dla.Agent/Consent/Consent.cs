@@ -2,13 +2,18 @@ using Dla.Agent.Core;
 
 namespace Dla.Agent.Consent;
 
+/// <summary>
+/// The canonical consent text and its version. The agent never shows this text: consent is given on the official DLA
+/// website, which must display exactly this text and report this version. The agent only checks the version.
+/// </summary>
 public static class ConsentText
 {
     /// <summary>
     /// Bump when the wording changes materially; existing users are then asked again.
     /// 1: first version. 2: added the sentence about the optional "read this window's text" question (OCR).
+    /// 3: withdrawal moved from the tray to the website, and consent is given on the website.
     /// </summary>
-    public const int Version = 2;
+    public const int Version = 3;
 
     public const string Title = "Digital Life Analyzer — your privacy";
 
@@ -34,24 +39,30 @@ IF A WINDOW TITLE IS UNCLEAR
 
 YOUR CONTROL
   • Pause or resume recording at any time from the tray icon.
-  • Withdraw consent at any time from the tray icon. Recording stops and DLA no longer starts at login.
+  • Withdraw your consent at any time on the DLA website. Recording stops and DLA no longer starts at login.
 
-DLA records nothing until you press Accept.";
+DLA records nothing until you accept on the DLA website.";
 }
 
 public enum ConsentState { None, Accepted, Declined, Withdrawn }
+
+/// <summary>Where an acceptance came from. Only an acceptance given on the official website counts.</summary>
+public enum ConsentSource { Local, Website }
 
 public sealed record ConsentRecord(
     ConsentState State,
     int TextVersion,
     DateTimeOffset? AcceptedAt,
     DateTimeOffset? DeclinedAt,
-    DateTimeOffset? WithdrawnAt)
+    DateTimeOffset? WithdrawnAt,
+    ConsentSource Source = ConsentSource.Local)   // files written before this field existed read as Local: not valid
 {
     public static ConsentRecord None { get; } = new(ConsentState.None, 0, null, null, null);
 
-    /// <summary>True only for accepted consent of the current text version.</summary>
-    public bool IsValidAccepted => State == ConsentState.Accepted && TextVersion == ConsentText.Version;
+    /// <summary>True only for consent accepted on the official website, for the current text version.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsValidAccepted =>
+        State == ConsentState.Accepted && TextVersion == ConsentText.Version && Source == ConsentSource.Website;
 }
 
 public sealed class ConsentStore
@@ -67,14 +78,20 @@ public sealed class ConsentStore
 
     public ConsentRecord Load() => AtomicFile.ReadJson<ConsentRecord>(_path) ?? ConsentRecord.None;
 
-    public ConsentRecord Accept() => Save(new(ConsentState.Accepted, ConsentText.Version, _now(), null, null));
+    /// <summary>
+    /// Records consent that was accepted on the official website. ONLY the website activation handshake may call
+    /// this, and that handshake is not built yet (it needs the backend), so nothing in the shipped agent calls it:
+    /// the agent can never become active until it exists. There is deliberately no local "Accept".
+    /// </summary>
+    internal ConsentRecord RecordWebsiteConsent() =>
+        Save(new(ConsentState.Accepted, ConsentText.Version, _now(), null, null, ConsentSource.Website));
 
     public ConsentRecord Decline() => Save(new(ConsentState.Declined, ConsentText.Version, null, _now(), null));
 
     public ConsentRecord Withdraw()
     {
         var prev = Load();
-        return Save(new(ConsentState.Withdrawn, prev.TextVersion, prev.AcceptedAt, null, _now()));
+        return Save(new(ConsentState.Withdrawn, prev.TextVersion, prev.AcceptedAt, null, _now(), prev.Source));
     }
 
     private ConsentRecord Save(ConsentRecord r)
