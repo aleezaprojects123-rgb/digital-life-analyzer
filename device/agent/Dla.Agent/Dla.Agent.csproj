@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Exe (console) for the development shell only: it prints one line and exits.
+         It becomes WinExe (no console window) when the real onboarding UI and tray arrive. -->
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Dla.Agent</AssemblyName>
+    <RootNamespace>Dla.Agent</RootNamespace>
+  </PropertyGroup>
+
+</Project>
