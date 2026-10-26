@@ -3,7 +3,7 @@
 University team project (Windows only). Two people: Aleeza owns `device/`, Fatima owns `cloud/`. `contracts/` is shared and needs both approvals.
 
 ## What we are building
-- A background Windows agent written in **C# (.NET 8)**, tray icon only, that logs the foreground app and idle time.
+- A background Windows agent written in **C# (.NET 10)**, tray icon only, that logs the foreground app and idle time.
 - A **Chrome/Edge extension (Manifest V3)** that logs the active website.
 - Both write events using the schema in `contracts/event-schema.md` into a local SQLite database, kept 30 days, then merged into one timeline.
 - An on-device AI model (ONNX Runtime) labels time as Study, Work, Entertainment, Social Media or Other, with a confidence score. Low confidence becomes "Other". A rule-based fallback works if the model is off.
@@ -21,3 +21,22 @@ University team project (Windows only). Two people: Aleeza owns `device/`, Fatim
 - Work on your own branch (`aleeza/day-XX-name`). Never push straight to main. The other person reviews every pull request.
 - Only edit your own folder. Contract changes go in `contracts/`.
 - Do one task at a time, explain each file briefly, and say how to run and test it.
+
+## Rules from the PRD (fixed)
+1. Extension and agent events share one schema (`contracts/event-schema.md`) and merge in time order, with overlap rules (F5).
+2. Events are stored only on the PC in SQLite, auto-deleted after 30 days, and survive restarts (F4).
+3. Idle time is never counted as active (F3).
+4. Every label has a category (Study, Work, Entertainment, Social Media, Other) and a confidence. Low confidence falls back to uncertain `Other`. No screenshots or OCR (F6).
+5. No screenshots, keystrokes or typed text. Page text is read only on the device, never uploaded and not stored (only the label is kept).
+6. Hidden sites and apps are skipped before anything is read (F7).
+7. Only encrypted summaries leave the PC, never raw events or page text (F8).
+
+## Team decisions (agreed 26 Oct 2026, not in the PRD)
+1. **URL:** the extension stores a sanitized URL: scheme, domain and path only. Query string and fragment are always removed. Long random-looking path segments and known sensitive patterns (reset or login tokens, session ids, email or account ids) are masked with `*`. Cleaning happens inside the extension before anything is sent. The URL stays on the PC and is never synced. `domain` is kept too, and reports use `domain`.
+2. **Idle:** decided only by the Windows agent from system-wide inactivity. The extension reports only browser-specific activity (active tab, tab changes) and never decides idle.
+3. **Overlap:** an extension event counts only while the browser (`chrome.exe` or `msedge.exe`) is the foreground app. When the extension and the agent both cover the same moment, count it once and keep the extension event. If the extension has no event, keep the agent event with `domain` null. Two agent events never overlap.
+4. **Other:** `Other` with `uncertain: true` is a last resort, used only when the activity cannot reasonably be identified from the available context.
+5. **Categorization:** use all available context (app, domain, URL, permitted title, on-device page or media text, time of day) instead of basic guesses. If the model is off, rules fill the category with `label_source: "rules"`.
+6. **Hidden apps and sites:** no event is recorded at all.
+7. **Private/incognito windows:** not recorded.
+8. **Privacy:** never read message bodies, inboxes, DMs, input fields or typed text. Mask sensitive titles.
