@@ -12,11 +12,6 @@ obj/
 # --- Node ---
 node_modules/
 
-# --- Python (the device agent) ---
-.venv/
-__pycache__/
-*.pyc
-
 # --- Secrets: passwords, API keys, encryption keys, certificates ---
 .env
 .env.*
