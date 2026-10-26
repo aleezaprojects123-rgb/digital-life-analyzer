@@ -7,7 +7,7 @@
   "additionalProperties": false,
   "required": [
     "schema_version", "id", "start", "end", "duration_seconds", "source",
-    "app", "domain", "url", "title", "idle", "category", "confidence", "uncertain", "label_source"
+    "app", "domain", "url", "title", "idle", "presence", "category", "confidence", "uncertain", "label_source"
   ],
   "properties": {
     "schema_version": { "const": "1" },
@@ -54,7 +54,14 @@
       "description": "Window or tab title, only when permitted. null (or masked) otherwise.",
       "type": ["string", "null"]
     },
-    "idle": { "type": "boolean" },
+    "idle": {
+      "description": "true exactly when presence is \"away\". Set by the agent only.",
+      "type": "boolean"
+    },
+    "presence": {
+      "description": "Is the user there? active = recent input. passive = no input, but foreground media or a call is running. uncertain = no input and no media, but a reader, slide or document app is in the foreground, so reading is possible. away = locked, asleep, display off, or no input and no signals after the waits. The extension writes null; the Windows agent fills it when it merges events into the timeline, because only the agent decides presence. This is separate from category and from the label field 'uncertain'.",
+      "enum": ["active", "passive", "uncertain", "away", null]
+    },
     "category": {
       "description": "Label from the on-device AI. null until labelled.",
       "enum": ["Study", "Work", "Entertainment", "Social Media", "Other", null]
@@ -99,6 +106,16 @@
       "description": "Idle events have no app.",
       "if": { "properties": { "idle": { "const": true } } },
       "then": { "properties": { "app": { "type": "null" } } }
+    },
+    {
+      "description": "idle is true only when presence is away.",
+      "if": { "properties": { "idle": { "const": true } } },
+      "then": { "properties": { "presence": { "const": "away" } } }
+    },
+    {
+      "description": "presence away always means idle is true.",
+      "if": { "properties": { "presence": { "const": "away" } }, "required": ["presence"] },
+      "then": { "properties": { "idle": { "const": true } } }
     },
     {
       "description": "Not labelled yet: no confidence, no label source, not uncertain.",
