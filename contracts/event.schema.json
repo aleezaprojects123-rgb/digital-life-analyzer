@@ -2,12 +2,12 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:dla:contracts:event.schema.json",
   "title": "DLA event (Contract 1, schema_version 1)",
-  "description": "One recorded event, from the browser extension or the Windows agent. Human-readable version: event-schema.md. JSON Schema cannot check that duration_seconds equals end minus start, or that end is not before start: the code that writes events must guarantee both.",
+  "description": "One recorded event, from the browser extension or the Windows agent. Human-readable version: event-schema.md. JSON Schema cannot check that duration_seconds equals end minus start, or that end is not before start, or that the host of url matches domain: the code that writes events must guarantee all three.",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "schema_version", "id", "start", "end", "duration_seconds", "source",
-    "app", "domain", "title", "idle", "category", "confidence", "uncertain", "label_source"
+    "app", "domain", "url", "title", "idle", "category", "confidence", "uncertain", "label_source"
   ],
   "properties": {
     "schema_version": { "const": "1" },
@@ -37,6 +37,18 @@
       "type": ["string", "null"],
       "maxLength": 253,
       "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$"
+    },
+    "url": {
+      "description": "Sanitized URL, extension events only (null otherwise): scheme, domain and path, nothing else. The query string and the fragment are always removed. Long random-looking path segments and known sensitive patterns (reset or login tokens, session ids, email or account ids) are replaced with *. The extension does this cleaning before anything is sent on. Stored only on the PC and never synced. The two 'not' checks below are a last-line safety net, not the cleaning itself.",
+      "type": ["string", "null"],
+      "maxLength": 2048,
+      "pattern": "^https?://[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+(/[^?#\\s]*)?$",
+      "not": {
+        "anyOf": [
+          { "description": "A path segment of 32 or more id-like characters is not allowed: it must have been replaced with *.", "type": "string", "pattern": "/[A-Za-z0-9_-]{32,}(/|$)" },
+          { "description": "An email address is not allowed anywhere in the path.", "type": "string", "pattern": "[^/@\\s]+@[^/\\s]+\\.[A-Za-z]{2,}" }
+        ]
+      }
     },
     "title": {
       "description": "Window or tab title, only when permitted. null (or masked) otherwise.",
@@ -72,9 +84,9 @@
       }
     },
     {
-      "description": "Agent events never have a domain.",
+      "description": "Agent events never have a domain or a url.",
       "if": { "properties": { "source": { "const": "agent" } } },
-      "then": { "properties": { "domain": { "type": "null" } } }
+      "then": { "properties": { "domain": { "type": "null" }, "url": { "type": "null" } } }
     },
     {
       "description": "Agent events that are not idle have an app (process name).",
