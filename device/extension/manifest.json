@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Digital Life Analyzer",
+  "version": "0.0.1",
+  "description": "Companion for the Digital Life Analyzer desktop agent. Development shell: nothing is recorded yet.",
+  "incognito": "not_allowed",
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Digital Life Analyzer",
+    "default_popup": "popup.html"
+  }
+}
