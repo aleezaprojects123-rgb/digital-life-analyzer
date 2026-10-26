@@ -1,0 +1,40 @@
+# ------------------------------------------------------------------
+# This repository is PUBLIC. Anything not ignored here can end up on
+# the internet. When in doubt, do not commit it.
+# ------------------------------------------------------------------
+
+# --- .NET ---
+bin/
+obj/
+.vs/
+*.user
+
+# --- Node ---
+node_modules/
+
+# --- Python (the device agent) ---
+.venv/
+__pycache__/
+*.pyc
+
+# --- Secrets: passwords, API keys, encryption keys, certificates ---
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.pfx
+secrets.json
+appsettings.Development.json
+
+# --- Local data: activity data is personal, never commit it ---
+*.db
+*.sqlite
+*.sqlite3
+*.log
+exports/
+
+# --- OS and editor files ---
+.DS_Store
+Thumbs.db
+.vscode/
