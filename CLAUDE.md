@@ -18,7 +18,7 @@ University team project (Windows only). Two people: Aleeza owns `device/`, Fatim
 - The agent must be packaged as a normal `.exe` that starts with Windows; users never run code.
 
 ## Working rules
-- Work on your own branch (`aleeza/day-XX-name`). Never push straight to main. The other person reviews every pull request.
+- Aleeza and Fatima commit directly to main, only inside their own folder (device/ for Aleeza, cloud/ for Fatima), and run git pull before every push. Never force-push. Changes to contracts/ go through a pull request and need the other person's approval. Proposed by Aleeza on 27 Oct 2026; Fatima to confirm.
 - Only edit your own folder. Contract changes go in `contracts/`.
 - Do one task at a time, explain each file briefly, and say how to run and test it.
 

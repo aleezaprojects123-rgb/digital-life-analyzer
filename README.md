@@ -26,10 +26,9 @@ digital-life-analyzer/
 
 ## Working rules
 
-1. Work on your own branch, for example `aleeza/day-01-shells`.
-2. **Never push straight to `main`.** Every pull request is reviewed and approved by the other person.
-3. Only edit your own folder.
-4. Changes in `contracts/` need approval from both of us.
+1. Aleeza and Fatima commit directly to main, only inside their own folder (device/ for Aleeza, cloud/ for Fatima), and run git pull before every push. Never force-push. Changes to contracts/ go through a pull request and need the other person's approval. Proposed by Aleeza on 27 Oct 2026; Fatima to confirm.
+2. Only edit your own folder.
+3. Changes in `contracts/` need approval from both of us.
 
 ## PUBLIC REPO RULES
 
