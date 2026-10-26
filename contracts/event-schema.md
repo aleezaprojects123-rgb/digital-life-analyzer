@@ -172,11 +172,40 @@ All examples use made-up test data.
 
 ## Decisions
 
-### Idle threshold
-TBD, Task 3
+### Idle threshold and presence (decided by the team, numbers need testing)
+- Do not rely only on a keyboard/mouse timer. The Windows agent decides presence from several signals: keyboard/mouse inactivity, computer lock/sleep/display off/sign-out, sound or media playing in the FOREGROUND app or active tab, and calls where detectable (microphone or camera in use).
+- A signal counts only if it matches what the user is looking at. An open app alone never counts as activity, and music playing in a background app does not count.
+- Presence states:
+  - **active**: recent input.
+  - **passive**: no input, but foreground media or a call is running.
+  - **uncertain**: no input and no media, but a reader, slide or document app is in the foreground, so reading is possible.
+  - **away**: locked, asleep, display off, or no input and no signals after the waits below.
+- Starting values, **NOT yet tested**: 3 minutes of input inactivity; 10 minutes extra wait for reading apps; about 90 minutes with no input at all as a cap for passive activity, after which the time becomes uncertain, then away.
+- If the system cannot tell whether the user is present, the time is marked uncertain. It is never guessed as active and never counted as productive. It counts less in the score.
+- Presence is separate from AI categories. Watching entertainment is still active (presence), and its category is Entertainment.
+- No screenshots, keystrokes, typed text or private data are collected. Sound detection checks only whether and which app is making sound, never the audio itself. Input detection sees only timing, never which keys.
+- Implementation notes (for later days): `GetLastInputInfo` for input timing, session lock and power events, Windows audio sessions and system media controls for playback, the Windows microphone/camera usage record for calls; in the extension, the tab "audible" flag and whether a video is playing.
+- Status: **needs Fatima's approval**, because it adds a `presence` field to the event format (commit 2) and extends the PRD's simple "inactivity past a set threshold" rule.
 
-### AI model shortlist
-TBD, Task 3
+### AI model shortlist (candidates for Day 7 testing, final model NOT selected)
+- The AI categorizes activity as Study, Work, Entertainment, Social Media or Other, runs locally in the C# agent using ONNX Runtime, works offline, and uses rule-based classification if the model is unavailable. Low confidence gives Other with `uncertain: true`.
+- Candidates:
+  1. all-MiniLM-L6-v2 + trained classifier
+  2. bge-small-en-v1.5 + trained classifier
+  3. all-MiniLM-L6-v2 zero-shot (no training, compares text with a description of each category)
+  - Baseline for comparison: rules only.
+- Measures: accuracy on Fatima's labelled test set (overall and per category), how often the result is uncertain Other, speed per prediction, memory usage, model file size, and compatibility with ONNX Runtime in C# including the text tokenizer.
+- Proposed limits (to confirm with Fatima; **not from the PRD**): model file 150 MB or less; agent memory 250 MB or less with the model loaded; 200 ms or less per prediction on a normal laptop; under 3% CPU on average; model off below 8 GB RAM and rules used instead. The model must beat the rules-only baseline; a numeric accuracy target is set after the baseline is measured, and results are reported honestly.
+- Both models are English; Urdu or Roman-Urdu titles may be weaker, so Fatima should include a few in the test set.
+- Selection: test on Day 7, choose the most accurate candidate within the limits (smaller and faster if close).
+- Still to decide: the confidence threshold.
 
-### Encryption key
-TBD, Task 3
+### Encryption key (PRD open decision; decided by Aleeza on 27 Oct 2026; Fatima's approval is still needed in the pull request)
+- **Decision:** for the 15-day build, summaries are protected by TLS in transit and encryption at rest on the server. The server holds the key (a secret in the server's environment or secret store, never in the repository). The dashboard does NOT decrypt in the browser; the server reads summaries to compute reports, score, forecast and recovery plan.
+- **Why:** the server must read summaries to compute the score, forecast and recovery plan (F11, F16, F18), and the PRD includes password reset (F9). A key derived from the user's password would make server-side analytics impossible and would make old data unreadable after a password reset.
+- **What leaves the PC:** only the daily summary (category totals, top app and site names, switches per hour, interruptions, confidence information). Never raw events, URLs, window titles or page text.
+- **Honest limit:** this is not end-to-end encryption. The server can read summaries. The consent screen must say so plainly.
+- Sync can be turned off by the user (F8).
+- **Secrets:** never committed (the repository is public). Each developer uses their own `.env` file; production secrets live only on the server.
+- **Upgrade path** (not in the 15 days): end-to-end encryption of the most sensitive parts (app and site names) with a user-held key. The summary format carries a version number so this can be added later.
+- **Test:** during sync, use a network proxy to confirm that the traffic is TLS and that the payload contains only the summary fields.
