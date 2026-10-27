@@ -20,7 +20,9 @@ internal readonly record struct StatusAnswer(int Status, string? Json, string? C
 /// A request is answered with 200 only if ALL of these hold; anything else gets 403 with no CORS headers:
 ///   * method GET and path /status,
 ///   * a Host header of exactly 127.0.0.1:port (this blocks DNS-rebinding tricks),
-///   * an Origin that is an allowlisted extension origin (web pages and requests without an Origin are refused).
+///   * an allowlisted extension: either an Origin that is an allowlisted extension origin, or no Origin but an
+///     X-DLA-Extension-Id header with an allowlisted id (web pages are refused: they always send an Origin, or need a
+///     preflight to send the header, and the preflight is refused).
 ///
 /// It is created and started only by AgentHost, only after consent. A bind failure (port taken) never crashes
 /// the agent: <see cref="Start"/> just returns false.
@@ -29,6 +31,7 @@ public sealed class LocalStatusLink : IAgentLink
 {
     private const int MaxHeaderBytes = 8192;
     private const int MaxConnections = 8;
+    public const string ExtensionIdHeader = "X-DLA-Extension-Id";
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(3);
 
     private readonly AgentLinkConfig _config;
@@ -214,9 +217,21 @@ public sealed class LocalStatusLink : IAgentLink
 
         if (method != "GET" || target != "/status") return forbidden;
         if (!headers.TryGetValue("Host", out var host) || host != $"127.0.0.1:{config.Port}") return forbidden;
-        if (!headers.TryGetValue("Origin", out var originHeader) || !config.TryGetAllowedOrigin(originHeader, out var origin)) return forbidden;
 
-        return new StatusAnswer(200, status.GetStatus().ToJson(), origin);
+        // Who is asking? Either an allowlisted extension Origin (answer gets a CORS header for exactly that origin),
+        // or, when the browser sends no Origin at all (an extension GET with a host permission), the extension's
+        // own id in X-DLA-Extension-Id (no CORS header: the extension does not need one). A request WITH an Origin
+        // that is not allowlisted is refused whatever else it says.
+        if (headers.TryGetValue("Origin", out var originHeader))
+        {
+            if (!config.TryGetAllowedOrigin(originHeader, out var origin)) return forbidden;
+            return new StatusAnswer(200, status.GetStatus().ToJson(), origin);
+        }
+
+        if (headers.TryGetValue(ExtensionIdHeader, out var idHeader) && config.TryGetAllowedId(idHeader, out _))
+            return new StatusAnswer(200, status.GetStatus().ToJson(), null);
+
+        return forbidden;
     }
 
     private static bool IsToken(string name) =>
@@ -231,7 +246,8 @@ public sealed class LocalStatusLink : IAgentLink
             text.Append("HTTP/1.1 200 OK\r\n");
             text.Append("Content-Type: application/json; charset=utf-8\r\n");
             text.Append($"Content-Length: {body.Length}\r\n");
-            text.Append($"Access-Control-Allow-Origin: {answer.CorsOrigin}\r\n");   // only for an allowed extension
+            if (answer.CorsOrigin is not null)
+                text.Append($"Access-Control-Allow-Origin: {answer.CorsOrigin}\r\n");   // only for an allowed extension origin
             text.Append("Vary: Origin\r\n");
             text.Append("Cache-Control: no-store\r\n");
             text.Append("X-Content-Type-Options: nosniff\r\n");

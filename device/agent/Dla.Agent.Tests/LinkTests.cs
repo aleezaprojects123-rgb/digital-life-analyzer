@@ -166,6 +166,22 @@ public class AgentLinkConfigTests
         Assert.Equal("", echoed);
     }
 
+    [Theory]
+    [InlineData("abcdefghijklmnopabcdefghijklmnop", true)]
+    [InlineData("123e4567-e89b-12d3-a456-426614174000", true)]
+    [InlineData("ponmlkjihgfedcbaponmlkjihgfedcba", false)]       // well formed, not listed
+    [InlineData("ABCDEFGHIJKLMNOPABCDEFGHIJKLMNOP", false)]       // upper case
+    [InlineData(" abcdefghijklmnopabcdefghijklmnop", false)]
+    [InlineData("chrome-extension://abcdefghijklmnopabcdefghijklmnop", false)]
+    [InlineData("*", false)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    public void The_id_header_form_allows_only_a_listed_well_formed_id(string? id, bool expected)
+    {
+        Assert.Equal(expected, Allowing().TryGetAllowedId(id, out var echoed));
+        Assert.Equal(expected ? id : "", echoed);
+    }
+
     [Fact]
     public void A_very_long_origin_is_refused()
     {
@@ -376,6 +392,53 @@ public class EvaluateTests
         Assert.Equal(403, Ask(Good(extraHeader)).Status);
     }
 
+    // ---- extensions whose browser sends no Origin: they name themselves in X-DLA-Extension-Id ----
+
+    private static string WithId(string id, string? origin = null) =>
+        LinkTestData.Request(Port, origin: origin, extra: $"X-DLA-Extension-Id: {id}\r\n");
+
+    [Fact]
+    public void No_origin_but_a_listed_extension_id_header_gets_200_without_any_cors_header()
+    {
+        var answer = Ask(WithId(LinkTestData.ChromeId));
+        Assert.Equal(200, answer.Status);
+        Assert.Equal("""{"consented":true,"trackingEnabled":true,"consentVersion":1}""", answer.Json);
+        Assert.Null(answer.CorsOrigin);
+    }
+
+    [Theory]
+    [InlineData("ponmlkjihgfedcbaponmlkjihgfedcba")]
+    [InlineData("ABCDEFGHIJKLMNOPABCDEFGHIJKLMNOP")]
+    [InlineData("*")]
+    [InlineData("")]
+    [InlineData("chrome-extension://abcdefghijklmnopabcdefghijklmnop")]
+    public void No_origin_and_a_wrong_id_header_gets_403(string id)
+    {
+        Assert.Equal(403, Ask(WithId(id)).Status);
+    }
+
+    [Fact]
+    public void An_origin_that_is_not_allowed_is_refused_even_with_a_good_id_header()
+    {
+        Assert.Equal(403, Ask(WithId(LinkTestData.ChromeId, origin: "https://evil.example")).Status);
+        Assert.Equal(403, Ask(WithId(LinkTestData.ChromeId, origin: "null")).Status);
+    }
+
+    [Fact]
+    public void A_preflight_for_the_id_header_is_refused_so_web_pages_cannot_use_it()
+    {
+        var raw = LinkTestData.Request(Port, method: "OPTIONS", origin: "https://evil.example",
+            extra: "Access-Control-Request-Method: GET\r\nAccess-Control-Request-Headers: x-dla-extension-id\r\n");
+        Assert.Equal(403, Ask(raw).Status);
+    }
+
+    [Fact]
+    public void A_repeated_id_header_gets_403()
+    {
+        var twice = LinkTestData.Request(Port, origin: null, extra: $"X-DLA-Extension-Id: {LinkTestData.ChromeId}\r\nX-DLA-Extension-Id: {LinkTestData.ChromeId}\r\n");
+        Assert.Equal(403, Ask(twice).Status);
+    }
+
     [Fact]
     public void An_empty_allowlist_means_even_a_perfect_request_gets_403()
     {
@@ -500,6 +563,32 @@ public class LocalStatusLinkLiveTests
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         Assert.False(response.Headers.Contains("Access-Control-Allow-Origin"));
         Assert.Equal("", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task A_real_request_with_no_origin_but_the_extension_id_header_gets_200_and_no_cors_header()
+    {
+        var (link, port, _) = Start();
+        using var _ = link;
+        var request = new HttpRequestMessage(HttpMethod.Get, $"http://127.0.0.1:{port}/status");
+        request.Headers.TryAddWithoutValidation("X-DLA-Extension-Id", LinkTestData.ChromeId);
+
+        using var response = await Client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.False(response.Headers.Contains("Access-Control-Allow-Origin"));
+        Assert.Contains("\"consented\":true", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task A_real_request_with_a_wrong_id_header_gets_403()
+    {
+        var (link, port, _) = Start();
+        using var _ = link;
+        var request = new HttpRequestMessage(HttpMethod.Get, $"http://127.0.0.1:{port}/status");
+        request.Headers.TryAddWithoutValidation("X-DLA-Extension-Id", LinkTestData.OtherChromeId);
+        using var response = await Client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
     [Fact]

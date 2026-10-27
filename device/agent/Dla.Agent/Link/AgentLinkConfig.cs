@@ -73,6 +73,21 @@ public sealed partial class AgentLinkConfig
     }
 
     /// <summary>
+    /// For extension requests that carry no Origin header (browsers leave it off a same-origin-style GET from an
+    /// extension that has a host permission). The extension names itself in the X-DLA-Extension-Id header instead.
+    /// True only if the value is exactly a well-formed id that is in the allowlist (lowercase, no spaces).
+    /// A web page cannot send this header without a CORS preflight, and the preflight (OPTIONS) is refused.
+    /// </summary>
+    public bool TryGetAllowedId(string? idHeader, out string id)
+    {
+        id = "";
+        if (string.IsNullOrEmpty(idHeader) || idHeader.Length > 64) return false;
+        if (!IsPlausibleId(idHeader) || !AllowedExtensionIds.Contains(idHeader)) return false;
+        id = idHeader;
+        return true;
+    }
+
+    /// <summary>
     /// True only if the Origin header is exactly "chrome-extension://&lt;id&gt;" (or "moz-extension://&lt;uuid&gt;")
     /// and that id is in the allowlist. Web pages (https://..., http://localhost..., "null"), a missing header,
     /// a trailing slash, upper case, or any other shape are all refused.
