@@ -11,10 +11,13 @@ internal static class Program
     [STAThread]
     private static int Main()
     {
-        // Only one copy at a time: no second tray icon and no second consent window.
-        using var instance = SingleInstance.TryAcquire();
-        if (instance is null) return 0;
+        // FIRST, before anything else exists: only one copy at a time. A refused copy returns here having created no
+        // icon, no window, no listener and no file. The guard is held in a static field until the program ends.
+        return AgentStartup.RunForThisProcess(RunAgent);
+    }
 
+    private static int RunAgent()
+    {
         ApplicationConfiguration.Initialize();
 
         var store = new ConsentStore(ConsentStore.DefaultDataDir());
@@ -34,7 +37,11 @@ internal static class Program
             createTray: () => new TrayController(state),
             createLink: () => new LocalStatusLink(AgentLinkConfig.Load(store.DataDir), new AgentStatusProvider(gate, state), log));
 
-        var launcher = new AgentLauncher(onboarding, host, RunUntilQuit);
+        // The icon is removed on every way out: Quit, logoff or shutdown, a crash, application exit and process exit.
+        using var exitSource = new SystemExitSource();
+        using var cleanup = new ExitCleanup(host, exitSource, log);
+
+        var launcher = new AgentLauncher(onboarding, host, h => RunUntilQuit(h, cleanup), log);
         var result = launcher.Launch();
 
         if (result.Outcome == OnboardingOutcome.SaveFailed)
@@ -55,9 +62,15 @@ internal static class Program
     }
 
     /// <summary>Lives in the tray with no window until the user chooses Quit.</summary>
-    private static void RunUntilQuit(AgentHost host)
+    private static void RunUntilQuit(AgentHost host, ExitCleanup cleanup)
     {
         using var context = new AgentApplicationContext(host);
+
+        // When Windows is ending the session, ask the message loop to finish (on its own thread) as well as stopping the host.
+        if (SynchronizationContext.Current is null) SynchronizationContext.SetSynchronizationContext(new WindowsFormsSynchronizationContext());
+        var ui = SynchronizationContext.Current;
+        cleanup.RequestExit = () => ui?.Post(_ => context.ExitThread(), null);
+
         Application.Run(context);
     }
 }

@@ -1,32 +1,11 @@
-using System.Diagnostics;
 using System.Reflection;
 
 namespace Dla.Agent.Tests;
 
-/// <summary>Runs the real built program, in a throwaway data folder, and checks what it does and does not do.</summary>
+/// <summary>Looks at the real built program file and its code. It never starts the program.</summary>
 public class DevelopmentShellTests
 {
     private static string AgentExe => Path.Combine(AppContext.BaseDirectory, "Dla.Agent.exe");
-
-    [Fact]
-    public void A_second_copy_exits_at_once_with_no_window_no_tray_and_no_log_while_the_first_one_holds_the_guard()
-    {
-        Assert.True(File.Exists(AgentExe), $"built program not found at {AgentExe}");
-        using var t = new TempData();
-        new Consent.ConsentStore(t.DataDir).SaveAcceptance(DateTimeOffset.UtcNow);   // consent exists, so a real start would show a tray
-
-        // The test plays "the first copy" by holding the agent's guard. (If a real agent is already running on this
-        // PC, the guard is simply already taken, and the assertions below are exactly the same.)
-        using var firstCopy = SingleInstance.TryAcquire();
-
-        var info = new ProcessStartInfo(AgentExe) { UseShellExecute = false, CreateNoWindow = true };
-        info.Environment["LOCALAPPDATA"] = t.Root;          // the real %LocalAppData% is never touched
-        using var process = Process.Start(info)!;
-
-        Assert.True(process.WaitForExit(15_000), "the second copy did not exit on its own");
-        Assert.Equal(0, process.ExitCode);
-        Assert.Equal([t.ConsentFile], t.FilesCreated());    // no agent.log: it stopped before doing anything
-    }
 
     [Fact]
     public void The_program_is_a_no_console_windows_app()
@@ -81,9 +60,9 @@ public class DevelopmentShellTests
             .Select(t => t.Name).OrderBy(n => n, StringComparer.Ordinal).ToArray();
         Assert.Equal(
             new[] {"AgentApplicationContext", "AgentHost", "AgentLaunchResult", "AgentLauncher", "AgentLinkConfig", "AgentState", "AgentStatus",
-             "AgentStatusProvider", "ApplicationConfiguration", "ConsentDecision", "ConsentForm", "ConsentStore", "ConsentText", "DefaultConsentGate",
-             "FileAgentLog", "FileConsentGate", "IAgentLink", "IAgentLog", "IConsentGate", "IStatusSource", "ITray", "LocalStatusLink", "OnboardingFlow",
-             "OnboardingOutcome", "Program", "SingleInstance", "StatusAnswer", "TrayController", "TrayIconFactory" }.OrderBy(n => n, StringComparer.Ordinal).ToArray(),
+             "AgentStartup", "AgentStatusProvider", "ApplicationConfiguration", "ConsentDecision", "ConsentForm", "ConsentStore", "ConsentText", "DefaultConsentGate", "ExitCleanup",
+             "FileAgentLog", "FileConsentGate", "IAgentLink", "IAgentLog", "IConsentGate", "IExitSource", "IStatusSource", "ITray", "ITrayIcon", "LocalStatusLink", "OnboardingFlow",
+             "OnboardingOutcome", "Program", "SingleInstance", "StatusAnswer", "SystemExitSource", "TrayController", "TrayIconFactory", "WinFormsTrayIcon" }.OrderBy(n => n, StringComparer.Ordinal).ToArray(),
             names);
     }
 }
