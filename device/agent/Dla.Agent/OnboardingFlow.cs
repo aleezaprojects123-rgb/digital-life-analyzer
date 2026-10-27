@@ -18,7 +18,7 @@ public enum OnboardingOutcome
 }
 
 /// <summary>
-/// What happens when the program starts, before anything can be recorded:
+/// What happens when the program starts, before anything can be recorded (the tray starts only after this):
 ///   valid consent already saved  -> carry on (no window),
 ///   otherwise                    -> show the consent window,
 ///   Accept                       -> save the consent,
@@ -47,7 +47,7 @@ public sealed class OnboardingFlow
     {
         if (_gate.HasConsent)
         {
-            _log.Write($"Consent version {ConsentText.Version} is on record. The tray is not built yet in this version, so the program exits.");
+            _log.Write($"Consent version {ConsentText.Version} is on record.");
             return OnboardingOutcome.ConsentOnRecord;
         }
 
@@ -63,7 +63,7 @@ public sealed class OnboardingFlow
             return OnboardingOutcome.SaveFailed;
         }
 
-        _log.Write($"Consent version {ConsentText.Version} accepted. The tray is not built yet in this version, so the program exits.");
+        _log.Write($"Consent version {ConsentText.Version} accepted.");
         return OnboardingOutcome.Accepted;
     }
 }
