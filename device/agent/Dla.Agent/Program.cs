@@ -1,5 +1,6 @@
 using System.Windows.Forms;
 using Dla.Agent.Consent;
+using Dla.Agent.Link;
 using Dla.Agent.Tray;
 using Dla.Agent.Ui;
 
@@ -19,15 +20,19 @@ internal static class Program
         var store = new ConsentStore(ConsentStore.DefaultDataDir());
         var gate = new FileConsentGate(store);
         var state = new AgentState();
+        var log = new FileAgentLog(store.DataDir);
 
         var onboarding = new OnboardingFlow(
             gate, store,
             askUser: ShowConsentWindow,
-            log: new FileAgentLog(store.DataDir),
+            log: log,
             utcNow: () => DateTimeOffset.UtcNow);
 
-        // The tray is created by AgentHost, and only after the consent gate says yes.
-        using var host = new AgentHost(gate, () => new TrayController(state));
+        // The tray and the local status link are created by AgentHost, and only after the consent gate says yes.
+        using var host = new AgentHost(
+            gate,
+            createTray: () => new TrayController(state),
+            createLink: () => new LocalStatusLink(AgentLinkConfig.Load(store.DataDir), new AgentStatusProvider(gate, state), log));
 
         var launcher = new AgentLauncher(onboarding, host, RunUntilQuit);
         var result = launcher.Launch();

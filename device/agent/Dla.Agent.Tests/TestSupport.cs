@@ -18,6 +18,12 @@ internal sealed class TempData : IDisposable
         File.WriteAllText(ConsentFile, content);
     }
 
+    public void WriteFile(string name, string content)
+    {
+        Directory.CreateDirectory(DataDir);
+        File.WriteAllText(Path.Combine(DataDir, name), content);
+    }
+
     public string[] FilesCreated() =>
         Directory.Exists(DataDir) ? Directory.GetFileSystemEntries(DataDir) : [];
 

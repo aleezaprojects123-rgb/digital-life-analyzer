@@ -1,4 +1,5 @@
 using Dla.Agent.Consent;
+using Dla.Agent.Link;
 using Dla.Agent.Tray;
 
 namespace Dla.Agent;
@@ -14,20 +15,27 @@ public sealed class AgentHost : IDisposable
 {
     private readonly IConsentGate _consent;
     private readonly Func<ITray> _createTray;
+    private readonly Func<IAgentLink>? _createLink;
     private ITray? _tray;
+    private IAgentLink? _link;
 
     /// <param name="consent">Says whether the user has explicitly accepted.</param>
     /// <param name="createTray">Creates the tray. It is called only after consent, never at startup.</param>
-    public AgentHost(IConsentGate consent, Func<ITray> createTray)
+    /// <param name="createLink">Creates the local status link for the extension. Called only after consent, never at startup. Optional.</param>
+    public AgentHost(IConsentGate consent, Func<ITray> createTray, Func<IAgentLink>? createLink = null)
     {
         _consent = consent;
         _createTray = createTray;
+        _createLink = createLink;
     }
 
     public bool IsRunning => _tray is not null;
 
     /// <summary>The tray, once started. null until the user has consented.</summary>
     public ITray? Tray => _tray;
+
+    /// <summary>The status link, once started. null until the user has consented (or when no link was supplied).</summary>
+    public IAgentLink? Link => _link;
 
     /// <returns>True if the agent is running. False if consent was not given, in which case nothing was created.</returns>
     public bool TryStart()
@@ -46,11 +54,32 @@ public sealed class AgentHost : IDisposable
             throw;
         }
         _tray = tray;
+        StartLink();
         return true;
+    }
+
+    /// <summary>The link is optional: if it cannot start for any reason, the tray and the agent carry on.</summary>
+    private void StartLink()
+    {
+        if (_createLink is null) return;
+        IAgentLink? link = null;
+        try
+        {
+            link = _createLink();
+            link.Start();
+            _link = link;
+        }
+        catch (Exception)
+        {
+            link?.Dispose();
+            _link = null;
+        }
     }
 
     public void Stop()
     {
+        _link?.Dispose();
+        _link = null;
         _tray?.Dispose();
         _tray = null;
     }

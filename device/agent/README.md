@@ -1,6 +1,6 @@
 # DLA Windows agent (C# / .NET 10)
 
-## Current state: consent window and tray, no tracking yet
+## Current state: consent window, tray and status endpoint, no tracking yet
 
 What the program does today:
 
@@ -20,9 +20,43 @@ The tray icon is created **only by `AgentHost`, and only after the consent gate 
 | **Open dashboard (coming later)** | Disabled until the dashboard exists. |
 | **Quit** | Removes the icon and ends the program cleanly. |
 
-The pause state lives in memory only, so it is ON again after a restart. Pausing never changes consent. The next task exposes the value to the extension.
+The pause state lives in memory only, so it is ON again after a restart. Pausing never changes consent.
 
-**Not done yet** (do not assume any of these work): tracking of any kind, the local link for the extension, watching for consent being withdrawn while the agent runs (a deleted consent file takes effect at the next start), an `.exe` package or installer, starting with Windows.
+**Not done yet** (do not assume any of these work): tracking of any kind, any transfer of events from the extension, watching for consent being withdrawn while the agent runs (a deleted consent file takes effect at the next start), an `.exe` package or installer, starting with Windows.
+
+## Local status endpoint (status only)
+
+After consent, `AgentHost` starts a tiny local web endpoint so the browser extension can ask one question: "may I record right now?". **It is status only. No events, no page data, nothing about what you did is sent or received.**
+
+```
+GET http://127.0.0.1:49721/status
+-> {"consented":true,"trackingEnabled":true,"consentVersion":1}
+```
+
+- **Never before consent.** Nothing listens until the consent gate says yes (it is created by `AgentHost`, not at start-up). Quit closes the port.
+- **This PC only.** It binds to `127.0.0.1` (a plain loopback socket), so other computers cannot reach it.
+- **One endpoint.** Any other path or method, a wrong `Host` header, a malformed or repeated header, or an oversized request gets `403` (or a hang-up).
+- **Origin allowlist.** Only a request whose `Origin` is exactly `chrome-extension://<id>` (Chrome and Edge) or `moz-extension://<uuid>` **and** whose ID is in the allowlist gets `200`. Web pages (`https://...`, `http://localhost`, `null`) and requests with no Origin get `403`. CORS headers (`Access-Control-Allow-Origin`) are sent **only** to an allowed origin, and only echo that origin.
+- **`consented` is `false` while tracking is paused** (tray: Tracking OFF), and also without consent, so an extension that follows it stays silent. `trackingEnabled` is never `true` without consent. `consentVersion` is `0` without consent.
+- **If the port is taken**, the agent logs one line and keeps running (tray works, extension sees "agent unreachable" and records nothing).
+- The port is the constant `AgentLinkConfig.DefaultPort` (49721) in `Link/AgentLinkConfig.cs`, the one place for the port and the allowlist. The link sits behind the `IAgentLink` interface so it can be swapped for Native Messaging later.
+
+### The allowlist file
+
+`%LocalAppData%\DigitalLifeAnalyzer\agent-link.json`. **Default: the file does not exist, so no extension is allowed.** The agent never creates it. Format:
+
+```json
+{ "allowedExtensionIds": [ "abcdefghijklmnopabcdefghijklmnop" ] }
+```
+
+(That ID is made up. Use your own.) A missing, corrupt or oversized file allows nothing; entries that do not look like a real ID are dropped. The file is read when the agent starts, so restart after editing it.
+
+**Developer only: find your unpacked extension's ID** at `chrome://extensions` or `edge://extensions` (turn on Developer mode; the ID is under the extension name). An unpacked extension's ID depends on its folder path on that PC, so each developer adds their own. Production builds ship with an empty list; real store IDs are added later, once they exist. Do not commit real IDs or your `agent-link.json`.
+
+### Security notes
+
+- The Origin check keeps ordinary **web pages** out. It is not a defence against another program on this PC, which can send any Origin header it likes. That is why the endpoint exposes only status, nothing sensitive.
+- **A token cannot be shared safely with an extension** (an extension has no secret store the agent can trust), so a token on this endpoint would give false security. **Event transfer from the extension will use a different, stronger design, decided on Day 3.** Nothing in this endpoint accepts or returns events.
 
 ## Where consent is saved
 
@@ -71,7 +105,8 @@ dotnet run --project Dla.Agent
 | `OnboardingFlow.cs` | Valid consent, else ask, then save on Accept only. |
 | `Consent/*` | The terms text and version, the strict consent file reader and writer, and the gate. |
 | `Ui/ConsentForm.cs` | The consent window. It only reports the decision; it saves nothing. |
-| `AgentHost.cs` | Starts the tray only if the consent gate says yes (it checks again itself). |
+| `AgentHost.cs` | Starts the tray and the status link only if the consent gate says yes (it checks again itself). |
+| `Link/*` | The status endpoint: `LocalStatusLink` (loopback socket, request check), `AgentLinkConfig` (port and allowlist), `AgentStatus` (the JSON), `IAgentLink`. |
 | `AgentApplicationContext.cs` | The tray-only lifecycle: no window, ends when Quit is chosen. It refuses to exist unless the host started. |
 | `Tray/TrayController.cs`, `TrayIconFactory.cs` | The tray icon, its menu and the placeholder icon drawn in code. |
 | `AgentState.cs` | The agent's "tracking enabled" value (the pause state). Not consent. |
@@ -79,6 +114,6 @@ dotnet run --project Dla.Agent
 
 ## What comes later
 
-1. The local status link for the extension (reads the pause state and the consent version).
+1. Event transfer from the extension (design decided Day 3).
 2. Tracking (foreground app and idle or presence), following `contracts/event-schema.md`.
 3. Packaging as a normal `.exe`, and starting with Windows.
