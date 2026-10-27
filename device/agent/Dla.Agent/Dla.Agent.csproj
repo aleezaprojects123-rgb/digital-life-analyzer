@@ -1,15 +1,20 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <!-- Exe (console) for the development shell only: it prints one line and exits.
-         It becomes WinExe (no console window) when the real onboarding UI and tray arrive. -->
-    <OutputType>Exe</OutputType>
+    <!-- WinExe: a Windows program with no console window. -->
+    <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Dla.Agent</AssemblyName>
     <RootNamespace>Dla.Agent</RootNamespace>
+    <ApplicationHighDpiMode>SystemAware</ApplicationHighDpiMode>
+    <ApplicationVisualStyles>true</ApplicationVisualStyles>
   </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Dla.Agent.Tests" />
+  </ItemGroup>
 
 </Project>

@@ -1,36 +1,35 @@
 # DLA Windows agent (C# / .NET 10)
 
-## Current state: development shell, it does nothing yet
+## Current state: consent window only, no tray and no tracking yet
 
-This is only the **foundation** of the agent. Today it:
+What the program does today:
 
-- builds,
-- shows **nothing**: no window and **no tray icon**,
-- starts **no tracking**: it does not read keyboard or mouse activity, the foreground app, idle time or URLs, and it has no database, no background monitoring and no sync,
-- prints one line and **exits immediately**, leaving no process running:
+1. **First start (nothing saved):** it shows the **consent window**: a title, the scrollable terms and privacy text, an **unticked** checkbox "I have read and agree", and two buttons. **Accept stays disabled until the box is ticked.** There is no default button, so pressing Enter never accepts.
+2. **Decline, the X, Alt+F4 or Esc:** counts as **Decline**. The program exits and writes **nothing**: no file, no folder, no log line.
+3. **Accept:** saves your consent, writes one line to a small status log, and exits. The tray is not built yet.
+4. **Next start with a valid saved consent:** no window is shown. It writes one log line and exits.
 
-  `Development shell: no UI and no tracking started. Waiting for the future onboarding and consent screen.`
+It shows **no tray icon**, starts **no tracking** and has **no network, database or sync**. It does not read keyboard or mouse activity, the foreground app, idle time or URLs.
 
-**Not done yet** (do not assume any of these work): the onboarding and consent screen, saving consent, the tray icon, tracking, packaging as an `.exe`, an installer, and starting with Windows.
+**Not done yet** (do not assume any of these work): the tray icon, tracking, the agent link to the extension, an `.exe` package or installer, starting with Windows.
 
-## Consent comes first (how the code is built for it)
+## Where consent is saved
 
-The intended flow is: the user opens Digital Life Analyzer, a real onboarding screen shows the terms and privacy information, the user **explicitly accepts**, and only then is the tray icon created and the consented features turned on. If the user declines, closes the screen or has not accepted, no tray icon and no tracking start. Opening the app is never consent, and consent is never assumed or on by default.
+`%LocalAppData%\DigitalLifeAnalyzer\consent.json`, created **only after Accept**:
 
-The code is already structured for this:
+```json
+{ "consentVersion": 1, "acceptedAtUtc": "2026-10-28T05:15:00Z" }
+```
 
-| Piece | Role |
-|---|---|
-| `IConsentGate` | One question: has the user explicitly accepted? |
-| `DefaultConsentGate` | The only gate that exists today. It **always says no**. |
-| `AgentHost` | Starts the agent **only if the gate says yes**. Without consent it creates nothing. |
-| `TrayController` | The future tray icon (Tracking: ON, Open dashboard, Quit). **Intentionally not used yet.** Only `AgentHost` can create it, and only after consent. |
-| `AgentApplicationContext` | The future tray-only lifecycle (no window; lives in the tray until Quit). **Intentionally not used yet.** It refuses to exist unless the agent was started with consent. |
-| `Program.cs` | Creates the host with the default gate, starts nothing, prints the line above and exits. |
+The file counts as consent only if it is well formed **and** its `consentVersion` equals the current terms version in `Consent/ConsentText.cs`. A missing, empty, corrupt, older or newer file means **not consented**, and the consent window is shown again. Deleting the file withdraws consent at the next start. The same folder holds `agent.log`, which holds only the agent's own status lines and never anything you did.
+
+Honest limit: the file is plain text on your PC, so someone with access to your account could edit it. It records your own local choice; it is not a security boundary.
+
+When the meaning of the terms changes, raise `ConsentText.Version`. Everyone is then asked again.
 
 ## For developers only
 
-End users never run terminal commands. They will install a normal `.exe` that starts with Windows (a later day). The commands below are only for developers building and testing the code.
+End users never run terminal commands. They will install a normal `.exe` that starts with Windows (a later day). The commands below are only for developers.
 
 You need the .NET 10 SDK. In a terminal, in this folder (`device/agent/`):
 
@@ -40,28 +39,33 @@ dotnet test Dla.Agent.sln
 dotnet run --project Dla.Agent
 ```
 
-- `dotnet build` compiles the agent.
-- `dotnet test` runs the automatic tests, including one that starts the real program and checks that it prints the line, exits on its own and leaves no process behind.
-- `dotnet run --project Dla.Agent` runs the shell. You should see the one line and no tray icon.
+- `dotnet test` runs the automatic tests. They use a throwaway folder, never your real `%LocalAppData%`, and one test starts the real program with a saved consent and checks that it shows no window and exits.
+- `dotnet run --project Dla.Agent` opens the real consent window. **Accepting writes your real consent file.** To try it without touching your real consent, point the program at a temporary folder first (PowerShell):
+
+  ```
+  $env:LOCALAPPDATA = "$env:TEMP\dla-try"; New-Item -ItemType Directory $env:LOCALAPPDATA -Force | Out-Null
+  dotnet run --project Dla.Agent
+  ```
+
+  To start fresh, delete the folder (or just `consent.json`).
+
+## How the code is organized for consent
+
+| Piece | Role |
+|---|---|
+| `Consent/ConsentText.cs` | The terms text and the version constant. |
+| `Consent/ConsentStore.cs` | Reads and writes `consent.json`. Strict: anything unexpected is "not consented". |
+| `Consent/IConsentGate.cs`, `FileConsentGate.cs` | The consent question, and the real gate that reads the file. |
+| `Consent/DefaultConsentGate.cs` | An "always no" gate, kept for tests. |
+| `Ui/ConsentForm.cs` | The consent window. It only reports the decision; it saves nothing. |
+| `OnboardingFlow.cs` | The start-up logic: valid consent, else ask, then save on Accept only. |
+| `AgentLog.cs` | The small status log, written only after consent. |
+| `Program.cs` | Wires the pieces together. A no-console Windows program. |
+| `AgentHost.cs`, `Tray/*`, `AgentApplicationContext.cs` | The future tray, created only after consent. **Intentionally not used yet.** |
 
 ## What comes later
 
-1. The onboarding and consent screen (terms and privacy information, explicit Accept or Decline).
-2. Saving the user's consent, and a real consent gate that uses it.
-3. The tray icon, created only after consent.
-4. Tracking (foreground app and idle or presence), following `contracts/event-schema.md`.
-5. Packaging as a normal `.exe`.
-6. Starting with Windows.
-
-## Files
-
-| File | Purpose |
-|---|---|
-| `Dla.Agent.sln` | The solution: the agent and its tests. |
-| `Dla.Agent/Dla.Agent.csproj` | The agent project (C#, .NET 10, WinForms). A console program for now; it becomes a no-window program when the real UI and tray arrive. |
-| `Dla.Agent/Program.cs` | The entry point described above. |
-| `Dla.Agent/AgentHost.cs` | Starts the agent only with consent. |
-| `Dla.Agent/AgentApplicationContext.cs` | The future tray-only lifecycle (not used yet). |
-| `Dla.Agent/Consent/IConsentGate.cs`, `DefaultConsentGate.cs` | The consent question and the "always no" gate. |
-| `Dla.Agent/Tray/ITray.cs`, `TrayController.cs` | The tray interface and the future tray icon (not used yet). |
-| `Dla.Agent.Tests/` | Automatic tests. |
+1. The tray, created only after consent (next task).
+2. The local status link for the extension.
+3. Tracking (foreground app and idle or presence), following `contracts/event-schema.md`.
+4. Packaging as a normal `.exe`, and starting with Windows.

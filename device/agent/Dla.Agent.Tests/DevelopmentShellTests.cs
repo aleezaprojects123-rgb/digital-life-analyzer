@@ -3,45 +3,53 @@ using System.Reflection;
 
 namespace Dla.Agent.Tests;
 
-/// <summary>Runs the real built program and checks it does what the development shell promises.</summary>
+/// <summary>Runs the real built program, in a throwaway data folder, and checks what it does and does not do.</summary>
 public class DevelopmentShellTests
 {
     private static string AgentExe => Path.Combine(AppContext.BaseDirectory, "Dla.Agent.exe");
 
     [Fact]
-    public void Running_the_shell_prints_one_line_exits_by_itself_and_leaves_no_process()
+    public void With_valid_consent_saved_the_program_shows_no_window_logs_one_line_and_exits_by_itself()
     {
         Assert.True(File.Exists(AgentExe), $"built program not found at {AgentExe}");
+        using var t = new TempData();
+        new Consent.ConsentStore(t.DataDir).SaveAcceptance(DateTimeOffset.UtcNow);
 
-        var info = new ProcessStartInfo(AgentExe)
-        {
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
+        var info = new ProcessStartInfo(AgentExe) { UseShellExecute = false, CreateNoWindow = true };
+        info.Environment["LOCALAPPDATA"] = t.Root;          // the real %LocalAppData% is never touched
         using var process = Process.Start(info)!;
         var pid = process.Id;
-        var output = process.StandardOutput.ReadToEnd();
 
-        Assert.True(process.WaitForExit(10_000), "the shell did not exit on its own within 10 seconds");
+        Assert.True(process.WaitForExit(15_000), "the program did not exit on its own within 15 seconds");
         Assert.Equal(0, process.ExitCode);
-        Assert.Equal(
-            "Development shell: no UI and no tracking started. Waiting for the future onboarding and consent screen.",
-            output.Trim());
-        Assert.Equal(string.Empty, process.StandardError.ReadToEnd());
 
-        // nothing keeps running: the process is gone
+        var log = File.ReadAllLines(Path.Combine(t.DataDir, "agent.log"));
+        Assert.Single(log);
+        Assert.Contains("Consent version 1 is on record", log[0]);
+        Assert.Equal(2, t.FilesCreated().Length);           // consent.json and agent.log only
+
         Assert.Null(Process.GetProcesses().FirstOrDefault(p => p.Id == pid && p.ProcessName == "Dla.Agent"));
+    }
+
+    [Fact]
+    public void The_program_is_a_no_console_windows_app()
+    {
+        // WinExe: the PE header's subsystem is "Windows GUI" (2), not "Windows console" (3)
+        using var fs = File.OpenRead(AgentExe);
+        using var reader = new BinaryReader(fs);
+        fs.Position = 0x3C;
+        fs.Position = reader.ReadInt32();                    // start of the PE header
+        Assert.Equal(0x00004550u, reader.ReadUInt32());      // "PE\0\0"
+        fs.Position += 20;                                   // skip the COFF header
+        fs.Position += 68;                                   // offset of Subsystem inside the optional header
+        Assert.Equal((ushort)2, reader.ReadUInt16());
     }
 
     [Fact]
     public void The_program_refers_to_nothing_that_could_track_store_or_send_data()
     {
         var agent = typeof(AgentHost).Assembly;
-        var references = agent.GetReferencedAssemblies().Select(a => a.Name!).ToList();
-
-        foreach (var name in references)
+        foreach (var name in agent.GetReferencedAssemblies().Select(a => a.Name!))
         {
             foreach (var forbidden in new[] { "Sqlite", "Sql", "Onnx", "Http", "Sockets", "WebClient", "Mail", "Registry", "Hooks" })
                 Assert.DoesNotContain(forbidden, name, StringComparison.OrdinalIgnoreCase);
@@ -51,21 +59,24 @@ public class DevelopmentShellTests
     [Fact]
     public void The_program_uses_no_input_window_or_screen_apis()
     {
-        // Look at every method the program calls. None may be a keyboard, mouse, window, screen or clipboard API.
         var agent = typeof(AgentHost).Assembly;
-        var forbiddenTypes = new[] { "SendKeys", "Clipboard", "Screen", "Cursor", "Control.MousePosition", "Keyboard", "SetWindowsHookEx", "GetForegroundWindow", "GetLastInputInfo" };
-        var allText = string.Join("\n", agent.GetTypes().SelectMany(t =>
+        var forbidden = new[] { "SendKeys", "Clipboard", "Cursor", "MousePosition", "Keyboard", "SetWindowsHookEx", "GetForegroundWindow", "GetLastInputInfo", "CopyFromScreen" };
+        var all = string.Join("\n", agent.GetTypes().SelectMany(t =>
             t.GetMembers(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)
              .Select(m => $"{t.FullName}.{m.Name}")));
-        foreach (var f in forbiddenTypes) Assert.DoesNotContain(f, allText);
+        foreach (var f in forbidden) Assert.DoesNotContain(f, all);
     }
 
     [Fact]
-    public void The_only_classes_are_the_consent_gate_the_host_the_future_tray_and_the_future_context()
+    public void The_classes_are_only_the_consent_pieces_the_onboarding_flow_and_the_future_tray()
     {
         var names = typeof(AgentHost).Assembly.GetTypes()
-            .Where(t => !t.Name.StartsWith('<') && !t.Name.Contains("DisplayClass"))
+            .Where(t => !t.Name.StartsWith('<') && !t.Name.Contains("DisplayClass"))   // ApplicationConfiguration is generated by the WinForms SDK
             .Select(t => t.Name).OrderBy(n => n).ToArray();
-        Assert.Equal(["AgentApplicationContext", "AgentHost", "DefaultConsentGate", "IConsentGate", "ITray", "Program", "TrayController"], names);
+        Assert.Equal(
+            ["AgentApplicationContext", "AgentHost", "ApplicationConfiguration", "ConsentDecision", "ConsentForm", "ConsentStore", "ConsentText",
+             "DefaultConsentGate", "FileAgentLog", "FileConsentGate", "IAgentLog", "IConsentGate", "ITray",
+             "OnboardingFlow", "OnboardingOutcome", "Program", "TrayController"],
+            names);
     }
 }

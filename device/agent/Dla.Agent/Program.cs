@@ -1,18 +1,41 @@
-using Dla.Agent;
+using System.Windows.Forms;
 using Dla.Agent.Consent;
-using Dla.Agent.Tray;
+using Dla.Agent.Ui;
 
-// Development shell. It shows no window and no tray icon, collects nothing, prints one line and exits.
-// The real onboarding and consent screen does not exist yet, so the default gate always says "not consented".
-using var host = new AgentHost(new DefaultConsentGate(), () => new TrayController());
+namespace Dla.Agent;
 
-if (host.TryStart())
+internal static class Program
 {
-    // Cannot happen with the default gate. If it ever does, stop instead of running without a message loop.
-    host.Stop();
-    Console.WriteLine("Development shell: the consent gate unexpectedly allowed a start. Nothing was kept running.");
-    return 1;
-}
+    [STAThread]
+    private static int Main()
+    {
+        ApplicationConfiguration.Initialize();
 
-Console.WriteLine("Development shell: no UI and no tracking started. Waiting for the future onboarding and consent screen.");
-return 0;
+        var store = new ConsentStore(ConsentStore.DefaultDataDir());
+        var flow = new OnboardingFlow(
+            new FileConsentGate(store),
+            store,
+            askUser: ShowConsentWindow,
+            log: new FileAgentLog(store.DataDir),
+            utcNow: () => DateTimeOffset.UtcNow);
+
+        // No tray and no tracking in this version. Task 2 adds the tray, created only after consent.
+        var outcome = flow.Run();
+
+        if (outcome == OnboardingOutcome.SaveFailed)
+        {
+            MessageBox.Show(
+                "Your choice could not be saved, so nothing is recorded. Please start the app again.",
+                ConsentText.WindowTitle, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+
+        return 0;
+    }
+
+    private static ConsentDecision ShowConsentWindow()
+    {
+        using var form = new ConsentForm();
+        form.ShowDialog();
+        return form.Decision;
+    }
+}
