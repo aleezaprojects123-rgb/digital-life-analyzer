@@ -18,6 +18,8 @@ node_modules/
 !.env.example
 *.key
 *.pem
+# The extension's development signing key is kept OUTSIDE the repo (in your user folder, .dla-keys). Never commit it.
+*.crx
 *.pfx
 secrets.json
 appsettings.Development.json

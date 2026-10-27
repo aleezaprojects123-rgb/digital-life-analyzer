@@ -64,6 +64,14 @@ export function getDomain(host) {
 
 /** Returns "scheme://host/path" or null. See the rules in the team decisions (CLAUDE.md, decision 1). */
 export function sanitizeUrl(rawUrl) {
+  return sanitizeUrlDetailed(rawUrl)?.url ?? null;
+}
+
+/**
+ * Same as sanitizeUrl, but also says whether anything in the path was masked or cut: { url, masked } or null.
+ * The tab logger drops the page title when `masked` is true (a masked path means the page is probably private).
+ */
+export function sanitizeUrlDetailed(rawUrl) {
   if (typeof rawUrl !== "string") return null;
 
   let url;
@@ -85,10 +93,13 @@ export function sanitizeUrl(rawUrl) {
   const segments = url.pathname.split("/").filter((s) => s.length > 0); // drops the leading slash, trailing slash and "//"
 
   const cleaned = [];
+  let masked = false;
   let previousWasSecretPrefix = false;
   for (const segment of segments) {
     const text = decode(segment);
-    cleaned.push(previousWasSecretPrefix || looksSecret(text) ? MASK : segment);
+    const hide = previousWasSecretPrefix || looksSecret(text);
+    if (hide) masked = true;
+    cleaned.push(hide ? MASK : segment);
     previousWasSecretPrefix = SECRET_PREFIXES.has(stripExtension(text).toLowerCase());
   }
 
@@ -98,12 +109,13 @@ export function sanitizeUrl(rawUrl) {
     const next = `${path}/${cleaned[i]}`;
     if (origin.length + next.length > MAX_URL_LENGTH - 2) {
       path += `/${MASK}`;
+      masked = true;
       break;
     }
     path = next;
   }
 
-  return origin + path;
+  return { url: origin + path, masked };
 }
 
 // ---------------------------------------------------------------------------------------------------------------------

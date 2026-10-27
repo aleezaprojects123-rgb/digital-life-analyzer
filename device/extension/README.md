@@ -1,57 +1,81 @@
 # DLA browser extension (Chrome and Edge, Manifest V3)
 
-## Current state: development shell, it records nothing
+## Current state: active-tab logging (F1), only after consent
 
-This is only the **foundation** of the extension. Today it:
+The extension logs which website is in front, **but only while the Windows agent says the user has agreed and tracking is on**. Until then it records nothing.
 
-- loads in Chrome and Edge,
-- asks for **no permissions** (no `tabs`, `storage`, `idle`, `alarms` and no website access),
-- writes one line to its console: `Digital Life Analyzer extension loaded: no tracking started`,
-- shows a small popup: "Digital Life Analyzer. Not set up yet. Nothing is being recorded."
+What it does:
 
-It records, stores and sends **nothing**. It does not read tabs, URLs, titles or page content, makes no network requests, uses no storage or timers, and does **not talk to the Windows agent**. It is set not to run in private (incognito) windows.
+1. Asks the agent one question, `GET http://127.0.0.1:49721/status` (with the header `X-DLA-Extension-Id: <its own ID>`, because the browser sends no Origin for this request), and records **only if both `consented` and `trackingEnabled` are `true`**. If the agent is not running, does not answer, or answers anything unexpected, that counts as **no consent**. The answer is cached for 10 seconds (never more than 15) and re-checked when tabs change. No timers or alarms.
+2. While allowed, it follows the active tab of the focused browser window (tab switches, page changes including single-page-app navigation, and the browser losing focus, which ends the event).
+3. Each period becomes **one Contract 1 event** (`contracts/event-schema.md`): all 16 fields, `source: "extension"`, `app: null`, `domain` from `getDomain`, `url` from `sanitizeUrl`, `idle: false`, `presence: null`, no label yet, UTC times in whole seconds, `duration_seconds = end - start`, a random unique `id`, `schema_version: "1"`.
+4. Events are kept **in memory only**. The popup shows "N events this session" while recording is allowed, and otherwise says "Nothing is being recorded."
 
-**Not done yet** (do not assume any of these work): consent, tracking, any communication with the agent, and publishing in the Chrome or Edge store.
+What it never does: read page content (there are **no content scripts**), record private windows (`"incognito": "not_allowed"`), record internal pages (`chrome://`, `edge://`, `about:`, `file:`, extension pages, the new-tab page), record hidden sites (the `isHiddenSite` hook; no setting exists yet, so it always says "not hidden"), use storage, alarms or timers, or make any network request other than `/status`.
 
-## For developers only: load it unpacked
+**Not done yet** (do not assume any of these work): sending events to the agent (Day 3), SQLite, app tracking, idle or presence (the agent decides those), hidden-site settings, store publishing.
 
-End users will never do this. They will install the extension normally, from the store, and never run any code or commands. The steps below are only for developers testing the code.
+### Titles
 
-**Chrome**
-1. Open `chrome://extensions`.
-2. Turn on **Developer mode** (switch at the top right).
-3. Click **Load unpacked** and choose this folder (`device/extension/`).
+The title is kept (cut to 120 characters, control characters removed) **except**, where it becomes `null`:
 
-**Edge**
-1. Open `edge://extensions`.
-2. Turn on **Developer mode** (switch on the left).
-3. Click **Load unpacked** and choose this folder (`device/extension/`).
+- when the sanitizer masked or cut anything in the URL path (a masked path suggests a private page), and
+- for webmail and messaging sites listed in `sensitive-domains.js`.
 
-**What you should see**
-- The extension "Digital Life Analyzer" in the list, version 0.0.1, with **no errors** and a permissions note saying it needs no special access.
-- Click **service worker** on its card to open the console. You should see `Digital Life Analyzer extension loaded: no tracking started`.
-- Click the extension's icon in the toolbar (use the puzzle-piece menu and pin it if needed). The popup says "Digital Life Analyzer. Not set up yet. Nothing is being recorded." It does not say "Tracking: ON".
+That list is a **first version for the team to review**, not a finished list.
 
-After you change a file, click the reload button on the extension's card.
+### What happens to a period when recording stops
 
-## What comes later
+If the agent says "paused" or "no consent" at the next tab event, the **unfinished period is dropped** (we cannot know when the pause happened). Events already finished are kept, unless the agent says no consent is on record at all (`consentVersion` 0), which clears them. A tab switch of under a second still becomes a 0-second event.
 
-- **Day 2:** the `tabs` permission, sanitized URL and active-tab logging, following `contracts/event-schema.md`. This will work **only after the Windows agent says that the user has consented**. Until then the extension stays inactive.
-- Talking to the agent (so it can learn that consent was given).
-- Hidden sites are skipped before anything is read.
-- Store publishing, so users install it normally.
+### Known limitation: the service worker can be stopped
 
-## Files
+Chrome and Edge stop an idle MV3 service worker after about 30 seconds without events and restart it on the next tab event. **The in-memory events and the unfinished period are lost when that happens**, so "N events this session" can drop back to 0. This is expected for now and is fixed on Day 3, when finished events are handed to the agent straight away instead of being held here.
 
-| File | Purpose |
-|---|---|
-| `manifest.json` | Declares the extension (Manifest V3): name, version, description, the popup and the service worker. No permissions. Not allowed in private windows. |
-| `background.js` | The service worker. It only writes one line to the console. |
-| `popup.html` | The popup shown when you click the extension's icon. Plain HTML, no script. |
-| `url-sanitizer.js` | `sanitizeUrl`, `getDomain`, `isHiddenSite` (hook, always false for now). Not used by the extension yet; the tab logging task will use it. |
-| `test/url-sanitizer.test.js` | Automatic tests. |
+## Permissions (and why)
 
-## Run the tests (developers)
+See [PERMISSIONS.md](PERMISSIONS.md). In short: `tabs` (to read the active tab's URL and title) and one host permission, `http://127.0.0.1:49721/*` (to ask the agent for `/status`). Nothing else.
+
+## For developers only
+
+End users never do any of this. They will install the extension from the official store (team decision 9). Loading it unpacked is developer-only.
+
+### 1. The fixed development ID
+
+`manifest.json` contains a `key` (a **public** key), so an unpacked copy always gets the same extension ID, in both Chrome and Edge, on every PC:
+
+```
+facfnlbfamjpolgenifllpjedenekdlb
+```
+
+An extension ID is computed from the key, not from the browser, so **Chrome and Edge show the same ID** for this key. (Without a `key`, an unpacked extension's ID depends on the folder path and would differ.)
+
+- **This key is for development only.** The matching private key was generated on Aleeza's PC and is stored **outside the repository** (`C:\Users\Admin\.dla-keys\dla-extension-dev.pem`). `*.pem` and `*.key` are in `.gitignore`. Never commit it.
+- **Review before packaging for a store.** The Chrome Web Store and Edge Add-ons assign their own IDs and key. Before a store build, remove this `key` (or replace it as the store instructs) and put the real store ID in the agent's allowlist instead. Do not publish a store build that carries this development key.
+
+### 2. Load it unpacked
+
+**Edge:** open `edge://extensions`, turn on **Developer mode** (left side), click **Load unpacked**, choose `device/extension/`.
+**Chrome:** open `chrome://extensions`, turn on **Developer mode** (top right), click **Load unpacked**, choose `device/extension/`.
+
+After editing a file, click the reload button on the extension's card.
+
+### 3. Find the extension ID
+
+On the extension's card in `edge://extensions` or `chrome://extensions`, the line **ID** shows 32 letters. It must read `facfnlbfamjpolgenifllpjedenekdlb`. If a browser shows a different ID, the `key` is missing or wrong; do not add that ID to the allowlist, fix the manifest instead.
+
+### 4. Allow the extension in the agent
+
+The agent only answers extensions on its allowlist, and its default list is **empty**. Create `%LocalAppData%\DigitalLifeAnalyzer\agent-link.json` (PowerShell):
+
+```
+New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\DigitalLifeAnalyzer" | Out-Null
+[IO.File]::WriteAllText("$env:LOCALAPPDATA\DigitalLifeAnalyzer\agent-link.json", '{ "allowedExtensionIds": [ "facfnlbfamjpolgenifllpjedenekdlb" ] }')
+```
+
+Both browsers use the same ID, so one entry covers Chrome and Edge. If you ever load a copy that shows another ID, add it as a second entry in the list. **Restart the agent** after changing the file. Do not commit this file (it lives outside the repo).
+
+### 5. Run the automatic tests
 
 Needs only Node.js (no npm, no packages). In `device/extension/`:
 
@@ -59,4 +83,22 @@ Needs only Node.js (no npm, no packages). In `device/extension/`:
 node --test
 ```
 
-The tests also check every cleaned URL against the `url` and `domain` rules read from `contracts/event.schema.json`.
+They run the real event code against the real sanitizer and check every event against `contracts/event.schema.json`. They do not need a browser or the agent.
+
+### 6. Try it for real
+
+See the manual test steps in the Day 2 report, or `device/DAY2-TEST-CHECKLIST.md` once it exists (Task 6).
+
+## Files
+
+| File | Purpose |
+|---|---|
+| `manifest.json` | Manifest V3: `tabs` permission, the one local host permission, the development `key`, module service worker, not allowed in private windows. |
+| `background.js` | The service worker. Connects tab and window events to the logger. |
+| `tab-logger.js` | The logic: one open period, closes into one Contract 1 event. No browser calls, so it is testable in Node. |
+| `agent-status.js` | The only network call: `GET /status`, strict checking, 10 second cache. |
+| `url-sanitizer.js` | `sanitizeUrl`, `getDomain`, `isHiddenSite` (hook, always false for now). |
+| `sensitive-domains.js` | Sites whose page titles are never kept (first version, to review). |
+| `popup.html`, `popup.js` | The popup: "N events this session" only while recording is allowed. |
+| `PERMISSIONS.md` | Permission justifications for store review. |
+| `test/*.test.js`, `test/schema-check.js` | Automatic tests and a small schema checker. |

@@ -1,11 +1,15 @@
 {
   "manifest_version": 3,
   "name": "Digital Life Analyzer",
-  "version": "0.0.1",
-  "description": "Companion for the Digital Life Analyzer desktop agent. Development shell: nothing is recorded yet.",
+  "version": "0.0.2",
+  "description": "Companion for the Digital Life Analyzer desktop agent. Records the active website only after you have agreed in the desktop app.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAo6XsvhZVnBu7c+eMdGXfyi+jdDLyDcywA9PPxZmeqxVReCuplf9tGTSdCVvyQsxEAwfoT9y60I371F02DkRPgrILbp07quixhXyt9hzC8yNKuY6qNKd/YqrbAE/FoxX/nZpiiYMdcKlC2Nfs1wydeVSgxVMM7uubjD2eKfFzwRYvMAYYIqRxScVFFGJojRTIRSBlqYRWrl1ye1eRDf3Hm+4aTi1OF2uDroeP8qWSmCjOJdYPWAVsgkQkUrMtPXJdqXRZzwHiG2csMwlVB8OTWlGLVjNLf0K2GcEGxUnQPp9+NiE5tL3sVFP9KgPDILIeS6JLoOUPz5Yz0yeqso1jCQIDAQAB",
   "incognito": "not_allowed",
+  "permissions": ["tabs"],
+  "host_permissions": ["http://127.0.0.1:49721/*"],
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "type": "module"
   },
   "action": {
     "default_title": "Digital Life Analyzer",
