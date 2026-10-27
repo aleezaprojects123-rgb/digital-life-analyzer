@@ -21,6 +21,7 @@ University team project (Windows only). Two people: Aleeza owns `device/`, Fatim
 - Aleeza and Fatima commit directly to main, only inside their own folder (device/ for Aleeza, cloud/ for Fatima), and run git pull before every push. Never force-push. Changes to contracts/ go through a pull request and need the other person's approval. Proposed by Aleeza on 27 Oct 2026; Fatima to confirm.
 - Only edit your own folder. Contract changes go in `contracts/`.
 - Do one task at a time, explain each file briefly, and say how to run and test it.
+- Do not launch Edge or Chrome and do not use mouse or keyboard automation on the user's PC. Test with node tests, .NET tests and static checks only, and give manual steps for anything that needs a real browser.
 
 ## Rules from the PRD (fixed)
 1. Extension and agent events share one schema (`contracts/event-schema.md`) and merge in time order, with overlap rules (F5).
