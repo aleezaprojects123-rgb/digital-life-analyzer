@@ -48,3 +48,15 @@ After you change a file, click the reload button on the extension's card.
 | `manifest.json` | Declares the extension (Manifest V3): name, version, description, the popup and the service worker. No permissions. Not allowed in private windows. |
 | `background.js` | The service worker. It only writes one line to the console. |
 | `popup.html` | The popup shown when you click the extension's icon. Plain HTML, no script. |
+| `url-sanitizer.js` | `sanitizeUrl`, `getDomain`, `isHiddenSite` (hook, always false for now). Not used by the extension yet; the tab logging task will use it. |
+| `test/url-sanitizer.test.js` | Automatic tests. |
+
+## Run the tests (developers)
+
+Needs only Node.js (no npm, no packages). In `device/extension/`:
+
+```
+node --test
+```
+
+The tests also check every cleaned URL against the `url` and `domain` rules read from `contracts/event.schema.json`.
