@@ -20,6 +20,11 @@ node_modules/
 *.pem
 # The extension's development signing key is kept OUTSIDE the repo (in your user folder, .dla-keys). Never commit it.
 *.crx
+.dla-keys/
+
+# --- Local agent files: these live in %LocalAppData%\DigitalLifeAnalyzer, never in the repo ---
+consent.json
+agent-link.json
 *.pfx
 secrets.json
 appsettings.Development.json
