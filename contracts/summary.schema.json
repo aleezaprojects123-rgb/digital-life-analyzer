@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:dla:contracts:summary.schema.json",
+  "title": "DLA daily summary (Contract 2, schema_version 1)",
+  "description": "One day of aggregated numbers, built on the PC and synced to the cloud. Human-readable version: summary-format.md. It holds only totals, counts and names of apps and sites: never raw events, URLs, window titles or page text. JSON Schema cannot check that the numbers add up (presence against categories, hours against the day, interruptions against switches, sorted top lists, hour equals position): the code that builds the summary must guarantee them and the server checks them. See 'Checks the server makes' in summary-format.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "date", "utc_offset_minutes", "generated_at",
+    "presence_seconds", "category_seconds", "labels", "hourly", "top_apps", "top_sites"
+  ],
+  "properties": {
+    "schema_version": { "const": "1" },
+    "date": {
+      "description": "The user's local calendar day this summary covers, YYYY-MM-DD.",
+      "type": "string",
+      "pattern": "^20\\d{2}-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])$"
+    },
+    "utc_offset_minutes": {
+      "description": "Local time minus UTC, in minutes, for this day (Pakistan is 300). Needed so the server can place the 24 hourly entries on the clock.",
+      "type": "integer",
+      "minimum": -720,
+      "maximum": 840
+    },
+    "generated_at": { "$ref": "#/$defs/utcTime" },
+    "presence_seconds": {
+      "description": "Seconds of the tracked day in each presence state (Contract 1). Away time is idle time. Time when tracking was paused or the PC was off is in none of them.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["active", "passive", "uncertain", "away"],
+      "properties": {
+        "active": { "$ref": "#/$defs/daySeconds" },
+        "passive": { "$ref": "#/$defs/daySeconds" },
+        "uncertain": { "$ref": "#/$defs/daySeconds" },
+        "away": { "$ref": "#/$defs/daySeconds" }
+      }
+    },
+    "category_seconds": {
+      "description": "Seconds per category, split by presence. Away time has no category, so it is not here.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Study", "Work", "Entertainment", "Social Media", "Other"],
+      "properties": {
+        "Study": { "$ref": "#/$defs/categoryByPresence" },
+        "Work": { "$ref": "#/$defs/categoryByPresence" },
+        "Entertainment": { "$ref": "#/$defs/categoryByPresence" },
+        "Social Media": { "$ref": "#/$defs/categoryByPresence" },
+        "Other": { "$ref": "#/$defs/categoryByPresence" }
+      }
+    },
+    "labels": {
+      "description": "How good the labels are. model_seconds + rules_seconds is all the counted (not away) time.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model_seconds", "rules_seconds", "uncertain_other_seconds", "mean_confidence"],
+      "properties": {
+        "model_seconds": { "description": "Counted seconds labelled by the on-device model.", "$ref": "#/$defs/daySeconds" },
+        "rules_seconds": { "description": "Counted seconds labelled by the rule fallback.", "$ref": "#/$defs/daySeconds" },
+        "uncertain_other_seconds": { "description": "Seconds inside Other where the label is the uncertain fallback (low confidence). At most the Other total.", "$ref": "#/$defs/daySeconds" },
+        "mean_confidence": {
+          "description": "Average confidence of the model labels, weighted by seconds. null exactly when model_seconds is 0.",
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "if": { "properties": { "model_seconds": { "const": 0 } }, "required": ["model_seconds"] },
+      "then": { "properties": { "mean_confidence": { "type": "null" } } },
+      "else": { "properties": { "mean_confidence": { "type": "number" } } }
+    },
+    "hourly": {
+      "description": "Exactly 24 entries, one per local clock hour, in order from hour 0 to hour 23.",
+      "type": "array",
+      "minItems": 24,
+      "maxItems": 24,
+      "items": { "$ref": "#/$defs/hourEntry" }
+    },
+    "top_apps": {
+      "description": "Up to 10 apps, most time first. Process names only.",
+      "type": "array",
+      "maxItems": 10,
+      "items": { "$ref": "#/$defs/topApp" }
+    },
+    "top_sites": {
+      "description": "Up to 10 websites, most time first. Domains only.",
+      "type": "array",
+      "maxItems": 10,
+      "items": { "$ref": "#/$defs/topSite" }
+    }
+  },
+  "$defs": {
+    "utcTime": {
+      "description": "ISO 8601 in UTC with a trailing Z, whole seconds, for example 2026-10-27T05:15:00Z.",
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"
+    },
+    "daySeconds": {
+      "description": "Whole seconds within one day. 90000 (25 hours) leaves room for a daylight-saving day.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 90000
+    },
+    "hourSeconds": {
+      "description": "Whole seconds within one hour.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 3600
+    },
+    "category": { "enum": ["Study", "Work", "Entertainment", "Social Media", "Other"] },
+    "categoryByPresence": {
+      "description": "Seconds of one category in the three presence states that have a category.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["active", "passive", "uncertain"],
+      "properties": {
+        "active": { "$ref": "#/$defs/daySeconds" },
+        "passive": { "$ref": "#/$defs/daySeconds" },
+        "uncertain": { "$ref": "#/$defs/daySeconds" }
+      }
+    },
+    "hourEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hour", "switches", "interruptions", "away_seconds", "category_seconds"],
+      "properties": {
+        "hour": { "description": "Local clock hour, 0 to 23. Must equal the position in the list.", "type": "integer", "minimum": 0, "maximum": 23 },
+        "switches": { "description": "Changes of app or site in this hour (F13).", "type": "integer", "minimum": 0, "maximum": 3600 },
+        "interruptions": { "description": "Interruptions in this hour, by the documented rule. Never more than switches.", "type": "integer", "minimum": 0, "maximum": 3600 },
+        "away_seconds": { "$ref": "#/$defs/hourSeconds" },
+        "category_seconds": {
+          "description": "Counted (not away) seconds per category in this hour. With away_seconds the total is at most 3600.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["Study", "Work", "Entertainment", "Social Media", "Other"],
+          "properties": {
+            "Study": { "$ref": "#/$defs/hourSeconds" },
+            "Work": { "$ref": "#/$defs/hourSeconds" },
+            "Entertainment": { "$ref": "#/$defs/hourSeconds" },
+            "Social Media": { "$ref": "#/$defs/hourSeconds" },
+            "Other": { "$ref": "#/$defs/hourSeconds" }
+          }
+        }
+      }
+    },
+    "topApp": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "seconds", "category"],
+      "properties": {
+        "name": {
+          "description": "Process name only (for example code.exe). No spaces and no path, so a window title cannot be put here.",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._()+-]{1,100}$"
+        },
+        "seconds": { "description": "Counted (not away) seconds in this app.", "$ref": "#/$defs/daySeconds" },
+        "category": { "description": "The category with the most time for this app today.", "$ref": "#/$defs/category" }
+      }
+    },
+    "topSite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["domain", "seconds", "category"],
+      "properties": {
+        "domain": {
+          "description": "Website domain only, lowercase, as in Contract 1. No scheme, path or query.",
+          "type": "string",
+          "maxLength": 253,
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$"
+        },
+        "seconds": { "description": "Counted (not away) seconds on this site.", "$ref": "#/$defs/daySeconds" },
+        "category": { "description": "The category with the most time for this site today.", "$ref": "#/$defs/category" }
+      }
+    }
+  }
+}
