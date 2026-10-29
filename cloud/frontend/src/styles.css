@@ -1,0 +1,107 @@
+:root {
+  --bg: #f6f7f9;
+  --card: #ffffff;
+  --text: #1c2330;
+  --muted: #5d6677;
+  --border: #dde1e8;
+  --ok: #1a7f4b;
+  --ok-bg: #e2f4ea;
+  --bad: #a3321f;
+  --bad-bg: #fbe7e3;
+  --neutral-bg: #eceef2;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #12161d;
+    --card: #1b212b;
+    --text: #e8ebf1;
+    --muted: #9aa3b4;
+    --border: #2d3543;
+    --ok: #6fd6a0;
+    --ok-bg: #173627;
+    --bad: #f0a091;
+    --bad-bg: #402019;
+    --neutral-bg: #2a303c;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.5;
+}
+
+.page {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 2rem 1rem 3rem;
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.75rem;
+}
+
+h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+}
+
+.muted {
+  margin: 0.25rem 0 1.5rem;
+  color: var(--muted);
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.card p {
+  margin: 0;
+}
+
+.status-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.status-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.4rem 0;
+}
+
+.status-row + .status-row {
+  border-top: 1px solid var(--border);
+}
+
+.pill {
+  padding: 0.1rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  background: var(--neutral-bg);
+  color: var(--muted);
+}
+
+.pill-online {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+.pill-down {
+  background: var(--bad-bg);
+  color: var(--bad);
+}

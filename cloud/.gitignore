@@ -1,0 +1,12 @@
+# Local files for cloud/ only. The repository's root .gitignore already covers .env, *.key, *.pem, *.db, *.log and node_modules/.
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# Frontend build output
+dist/
+coverage/
