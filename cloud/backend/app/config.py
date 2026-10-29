@@ -33,7 +33,10 @@ class Settings(BaseSettings):
     database_url: str = ""
     # A separate database for the tests. Its name must end with "_test": the tests wipe it.
     test_database_url: str = ""
+    # Signs login tokens. At least 32 characters; login refuses to work without it.
     jwt_secret: str = ""
+    # How long a login stays valid (minutes). 480 = 8 hours.
+    access_token_minutes: int = 480
     encryption_key: str = ""
     app_base_url: str = ""
     # Web addresses allowed to call the API from a browser, separated by commas.

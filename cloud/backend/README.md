@@ -58,9 +58,32 @@ Stop it with `Ctrl+C`.
 & $py -m pytest
 ```
 
-- Without `TEST_DATABASE_URL` in your `.env`, the tests that need the database are **skipped** (the output says so), and the rest run.
-- With it, the migration tests run against `dla_test`. **They wipe that database.** They refuse to run if its name does not end with `_test`.
-- All test data is made up (`test@example.com`). No real hashes or keys.
+- Without `TEST_DATABASE_URL` in your `.env`, the tests that need the database are **skipped** (the output says so), and the rest run (67 pass, 64 skipped).
+- With it, all 131 run against `dla_test`. **They wipe that database.** They refuse to run if its name does not end with `_test`.
+- All test data is made up (`ali@example.com`, `test-password-1`). No real hashes or keys.
+
+## Accounts (F9)
+
+All routes are under `/api/v1`. You can try them on the interactive page at http://127.0.0.1:8000/docs.
+
+| Route | What it does |
+|---|---|
+| `POST /auth/register` | Body `{"email", "password"}`. Makes an account on the **free** plan and answers `201` with `id`, `email`, `plan`, `created_at`. `409` if the email is taken (letter case does not matter). `422` for a bad email, a password shorter than 8 or longer than 128 characters, or any extra field (nobody can pick a plan here). |
+| `POST /auth/login` | Same body. Answers `200` with `access_token` (a signed token, valid 8 hours) and `expires_in`. A wrong password and an unknown email both get the **same** `401`, so login can not be used to find out who has an account. |
+| `GET /me` | Header `Authorization: Bearer <access_token>`. Answers with the caller's own account. `401` without a token, with a token that is changed, expired, signed with another secret, or of an account that no longer exists. |
+
+How it is kept safe:
+
+- **Passwords** are stored only as an Argon2id hash with a random salt (`app/security.py`). The password is never stored, logged or sent back, not even inside an error message.
+- **Tokens** are signed with `JWT_SECRET` (at least 32 characters). If it is missing or short, login and `/me` answer `503` instead of making weak tokens. A token holds only the user id and its times.
+- **One user can only reach her own data.** `/me` takes the user id from the verified token, never from the request. Any route added later that shows account data must depend on `current_user` (`app/auth.py`) and ask only for rows of that user.
+- **Not done yet:** log out and password reset (Day 3), and limits on repeated wrong passwords. Register and login pages in the dashboard are also still to do.
+
+To try it by hand in the browser (http://127.0.0.1:8000/docs): register, then `POST /auth/login`, copy the `access_token` from the answer, click **Authorize** (top right), paste it, and call `GET /me`. Type the password in that page only.
+
+## Checking a summary against Contract 2
+
+`app/summary_contract.py` checks a summary against the JSON Schema in `contracts/` and the seven "checks the server makes" from [contracts/summary-format.md](../../contracts/summary-format.md). `validate_summary(summary)` returns a list of problems; an empty list means valid. It is not connected to a route yet: the upload route (Day 4 and 8) will use it. Tests run it on the contract's samples and on [../mock/](../mock/README.md).
 
 ## The database today
 
@@ -85,7 +108,12 @@ The summary columns hold no activity data on their own: everything is inside the
 | `app/config.py` | Settings from `.env`. Secrets have no default value. |
 | `app/db.py` | The database connection, created on first use. |
 | `app/models.py` | The tables. |
+| `app/schemas.py` | What register and login accept and return (email tidied, password length limits, no extra fields). |
+| `app/security.py` | Argon2id password hashing and signed tokens. |
+| `app/auth.py` | `current_user`: reads the token and loads that user. |
+| `app/summary_contract.py` | Checks a summary against Contract 2. |
 | `app/routes/health.py` | The two health routes. |
+| `app/routes/accounts.py` | `register`, `login`, `me`. |
 | `alembic.ini`, `migrations/` | Database migrations (Alembic). The address is read from `DATABASE_URL`, never written in these files. |
 | `tests/` | Automatic tests. |
 | `requirements.txt`, `requirements-dev.txt` | Packages, pinned to the tested versions. |

@@ -1,10 +1,17 @@
 import pytest
 from alembic import command
 from alembic.config import Config
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
+from sqlalchemy.orm import sessionmaker
 
-from app.config import BACKEND_DIR, get_settings
+from app.config import BACKEND_DIR, Settings, get_settings
+from app.db import get_session
+from app.main import create_app
+
+# A made-up secret for the tests only. It is long enough to be accepted (32 characters or more).
+TEST_JWT_SECRET = "test-only-secret-" + "x" * 40
 
 
 def alembic_config(url: str) -> Config:
@@ -43,3 +50,39 @@ def migrated_db(empty_db, test_db_url):
     """The test database after `alembic upgrade head`."""
     command.upgrade(alembic_config(test_db_url), "head")
     return empty_db
+
+
+@pytest.fixture
+def app_db(test_db_url):
+    """The test database at the latest migration with no accounts in it (quicker than wiping it)."""
+    command.upgrade(alembic_config(test_db_url), "head")
+    engine = create_engine(test_db_url)
+    with engine.begin() as connection:
+        connection.execute(text("TRUNCATE users CASCADE"))
+    yield engine
+    engine.dispose()
+
+
+def build_client(engine, jwt_secret: str) -> TestClient:
+    """The real app, talking to the test database, with the given login secret."""
+    app = create_app()
+    make_session = sessionmaker(bind=engine, expire_on_commit=False)
+
+    def test_session():
+        with make_session() as session:
+            yield session
+
+    app.dependency_overrides[get_session] = test_session
+    app.dependency_overrides[get_settings] = lambda: Settings(_env_file=None, jwt_secret=jwt_secret)
+    return TestClient(app)
+
+
+@pytest.fixture
+def client(app_db) -> TestClient:
+    return build_client(app_db, TEST_JWT_SECRET)
+
+
+@pytest.fixture
+def client_without_secret(app_db) -> TestClient:
+    """The login secret is not set, as on a PC that has not finished setup."""
+    return build_client(app_db, "")
