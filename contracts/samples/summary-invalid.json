@@ -1,0 +1,60 @@
+{
+  "schema_version": "1",
+  "date": "29/10/2026",
+  "utc_offset_minutes": 300,
+  "generated_at": "2026-10-27T17:30:00Z",
+  "presence_seconds": { "active": 24935, "passive": 9080, "uncertain": -5, "away": 6900 },
+  "category_seconds": {
+    "Study": { "active": 5760, "passive": 2400, "uncertain": 1440 },
+    "Work": { "active": 7650, "passive": 450, "uncertain": 900 },
+    "Entertainment": { "active": 5211, "passive": 5790, "uncertain": 579 },
+    "Social Media": { "active": 5292, "passive": 294, "uncertain": 294 },
+    "Other": { "active": 1022, "passive": 146, "uncertain": 292 }
+  },
+  "labels": { "model_seconds": 35720, "rules_seconds": 1800, "uncertain_other_seconds": 876, "mean_confidence": 1.4 },
+  "hourly": [
+    { "hour": 0, "switches": 0, "interruptions": 0, "away_seconds": 0, "category_seconds": { "Study": 0, "Work": 0, "Entertainment": 0, "Social Media": 0, "Other": 0 } },
+    { "hour": 1, "switches": 0, "interruptions": 0, "away_seconds": 0, "category_seconds": { "Study": 0, "Work": 0, "Entertainment": 0, "Social Media": 0, "Other": 0 } },
+    { "hour": 2, "switches": 0, "interruptions": 0, "away_seconds": 0, "category_seconds": { "Study": 0, "Work": 0, "Entertainment": 0, "Social Media": 0, "Other": 0 } },
+    { "hour": 3, "switches": 0, "interruptions": 0, "away_seconds": 0, "category_seconds": { "Study": 0, "Work": 0, "Entertainment": 0, "Social Media": 0, "Other": 0 } },
+    { "hour": 4, "switches": 0, "interruptions": 0, "away_seconds": 0, "category_seconds": { "Study": 0, "Work": 0, "Entertainment": 0, "Social Media": 0, "Other": 0 } },
+    { "hour": 5, "switches": 0, "interruptions": 0, "away_seconds": 0, "category_seconds": { "Study": 0, "Work": 0, "Entertainment": 0, "Social Media": 0, "Other": 0 } },
+    { "hour": 6, "switches": 0, "interruptions": 0, "away_seconds": 0, "category_seconds": { "Study": 0, "Work": 0, "Entertainment": 0, "Social Media": 0, "Other": 0 } },
+    { "hour": 7, "switches": 0, "interruptions": 0, "away_seconds": 0, "category_seconds": { "Study": 0, "Work": 0, "Entertainment": 0, "Social Media": 0, "Other": 0 } },
+    { "hour": 8, "switches": 6, "interruptions": 0, "away_seconds": 0, "category_seconds": { "Study": 0, "Work": 1500, "Entertainment": 0, "Social Media": 0, "Other": 200 } },
+    { "hour": 9, "switches": 14, "interruptions": 1, "away_seconds": 0, "category_seconds": { "Study": 2400, "Work": 600, "Entertainment": 0, "Social Media": 300, "Other": 0 } },
+    { "hour": 10, "switches": 11, "interruptions": 1, "away_seconds": 0, "category_seconds": { "Study": 2700, "Work": 300, "Entertainment": 0, "Social Media": 240, "Other": 0 } },
+    { "hour": 11, "switches": 22, "interruptions": 3, "away_seconds": 300, "category_seconds": { "Study": 0, "Work": 2100, "Entertainment": 600, "Social Media": 420, "Other": 120 } },
+    { "hour": 12, "switches": 18, "interruptions": 2, "away_seconds": 900, "category_seconds": { "Study": 0, "Work": 0, "Entertainment": 1500, "Social Media": 900, "Other": 300 } },
+    { "hour": 13, "switches": 9, "interruptions": 0, "away_seconds": 1800, "category_seconds": { "Study": 0, "Work": 900, "Entertainment": 600, "Social Media": 0, "Other": 0 } },
+    { "hour": 14, "switches": 17, "interruptions": 1, "away_seconds": 0, "category_seconds": { "Study": 600, "Work": 2400, "Entertainment": 180, "Social Media": 120, "Other": 60 } },
+    { "hour": 15, "switches": 12, "interruptions": 1, "away_seconds": 0, "category_seconds": { "Study": 2100, "Work": 900, "Entertainment": 0, "Social Media": 300, "Other": 0 } },
+    { "hour": 16, "switches": 26, "interruptions": 4, "away_seconds": 0, "category_seconds": { "Study": 1500, "Work": 0, "Entertainment": 1200, "Social Media": 600, "Other": 120 } },
+    { "hour": 17, "switches": 20, "interruptions": 2, "away_seconds": 300, "category_seconds": { "Study": 0, "Work": 300, "Entertainment": 1800, "Social Media": 900, "Other": 300 } },
+    { "hour": 18, "switches": 4, "interruptions": 0, "away_seconds": 2400, "category_seconds": { "Study": 0, "Work": 0, "Entertainment": 600, "Social Media": 0, "Other": 0 } },
+    { "hour": 19, "switches": 15, "interruptions": 0, "away_seconds": 0, "category_seconds": { "Study": 0, "Work": 0, "Entertainment": 2400, "Social Media": 600, "Other": 240 } },
+    { "hour": 20, "switches": 19, "interruptions": 2, "away_seconds": 0, "category_seconds": { "Study": 300, "Work": 0, "Entertainment": 1800, "Social Media": 1200, "Other": 120 } },
+    { "hour": 21, "switches": 8, "interruptions": 0, "away_seconds": 1200, "category_seconds": { "Study": 0, "Work": 0, "Entertainment": 900, "Social Media": 300, "Other": 0 } },
+    { "hour": 22, "switches": 0, "interruptions": 0, "away_seconds": 0, "category_seconds": { "Study": 0, "Work": 0, "Entertainment": 0, "Social Media": 0, "Other": 0 } },
+    { "hour": 23, "switches": 0, "interruptions": 0, "away_seconds": 0, "category_seconds": { "Study": 0, "Work": 0, "Entertainment": 0, "Social Media": 0, "Other": 0 } }
+  ],
+  "top_apps": [
+    { "name": "Chapter 4 - Thermodynamics.pdf", "seconds": 4950, "category": "Work" },
+    { "name": "vlc.exe", "seconds": 2880, "category": "Study" },
+    { "name": "acrobat.exe", "seconds": 1920, "category": "Study" },
+    { "name": "WINWORD.EXE", "seconds": 1800, "category": "Work" },
+    { "name": "Spotify.exe", "seconds": 1737, "category": "Entertainment" },
+    { "name": "explorer.exe", "seconds": 438, "category": "Other" },
+    { "name": "msedge.exe", "seconds": 292, "category": "Other" }
+  ],
+  "top_sites": [
+    { "domain": "youtube.com", "seconds": 5790, "category": "Entertainment", "url": "https://www.youtube.com/watch?v=abc" },
+    { "domain": "instagram.com", "seconds": 2940, "category": "Social Media" },
+    { "domain": "docs.google.com", "seconds": 2880, "category": "Study" },
+    { "domain": "netflix.com", "seconds": 2316, "category": "Entertainment" },
+    { "domain": "github.com", "seconds": 1800, "category": "Work" },
+    { "domain": "reddit.com", "seconds": 1176, "category": "Social Media" },
+    { "domain": "en.wikipedia.org", "seconds": 960, "category": "Study" }
+  ],
+  "window_titles": ["main.cs - dla-agent"]
+}
