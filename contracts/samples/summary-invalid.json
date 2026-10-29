@@ -50,11 +50,11 @@
   "top_sites": [
     { "domain": "youtube.com", "seconds": 5790, "category": "Entertainment", "url": "https://www.youtube.com/watch?v=abc" },
     { "domain": "instagram.com", "seconds": 2940, "category": "Social Media" },
-    { "domain": "docs.google.com", "seconds": 2880, "category": "Study" },
+    { "domain": "google.com", "seconds": 2880, "category": "Study" },
     { "domain": "netflix.com", "seconds": 2316, "category": "Entertainment" },
     { "domain": "github.com", "seconds": 1800, "category": "Work" },
     { "domain": "reddit.com", "seconds": 1176, "category": "Social Media" },
-    { "domain": "en.wikipedia.org", "seconds": 960, "category": "Study" }
+    { "domain": "wikipedia.org", "seconds": 960, "category": "Study" }
   ],
   "window_titles": ["main.cs - dla-agent"]
 }

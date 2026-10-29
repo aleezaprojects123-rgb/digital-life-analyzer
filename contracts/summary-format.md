@@ -94,7 +94,7 @@ The hourly category seconds are what the forecast (F16) and the "best focus hour
 ### `top_apps` and `top_sites`
 
 - `top_apps` items: `name`, `seconds`, `category`. `name` is the **process name only** (for example `code.exe`): letters, digits and `. _ ( ) + -`, no spaces, no path. This keeps a window title from being put in this field.
-- `top_sites` items: `domain`, `seconds`, `category`. `domain` is the domain only, lowercase, as in Contract 1. Never a URL.
+- `top_sites` items: `domain`, `seconds`, `category`. `domain` is the domain only, lowercase, as in Contract 1: the extension stores the **registrable domain**, so `docs.google.com` is `google.com` and `en.wikipedia.org` is `wikipedia.org`. Never a URL.
 - `seconds` is the counted time (active, passive and uncertain, not away) in that app or site.
 - `category` is the category with the most time for that app or site today.
 - Sorted by `seconds`, largest first. An app or site must not be listed twice. Browser time that the extension covered is listed under the site (Contract 1, overlap rule), not under the browser app.
