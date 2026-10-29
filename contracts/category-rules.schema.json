@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:dla:contracts:category-rules.schema.json",
+  "title": "DLA category rules (Contract 3, schema_version 1)",
+  "description": "Maps apps (process names) and sites (hosts) to one category. Human-readable version: category-rules.md. Rules are tried from the top of each list and the FIRST match wins; anything unmatched is the default category (Other). JSON Schema can not check that a later rule is never hidden by an earlier one, or that no process or site appears twice: the tests in cloud/category-rules-testset/ check that, and whoever edits the file must run them.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "rules_version", "updated", "default_category", "apps", "sites"],
+  "properties": {
+    "schema_version": { "description": "Version of this FORMAT.", "const": "1" },
+    "rules_version": {
+      "description": "Version of the CONTENT. Starts at 1 and goes up by one every time any rule is added, removed, moved or changed.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "updated": {
+      "description": "The day the content last changed, YYYY-MM-DD.",
+      "type": "string",
+      "pattern": "^20\\d{2}-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])$"
+    },
+    "default_category": {
+      "description": "What an app or site that matches no rule gets.",
+      "const": "Other"
+    },
+    "apps": {
+      "description": "Rules for agent events (the app in front). Tried in order; first match wins.",
+      "type": "array",
+      "maxItems": 2000,
+      "items": { "$ref": "#/$defs/appRule" }
+    },
+    "sites": {
+      "description": "Rules for extension events (the website in front). Tried in order; first match wins. Put a more specific rule before a more general one.",
+      "type": "array",
+      "maxItems": 5000,
+      "items": { "$ref": "#/$defs/siteRule" }
+    }
+  },
+  "$defs": {
+    "category": { "enum": ["Study", "Work", "Entertainment", "Social Media", "Other"] },
+    "note": {
+      "description": "Why the rule exists. For people only; never used for matching.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "appRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["process", "category"],
+      "properties": {
+        "process": {
+          "description": "Process name in lowercase, WITHOUT .exe, no spaces and no path (Code.exe is written code). It matches the whole process name, ignoring letter case and a trailing .exe on the event side.",
+          "type": "string",
+          "pattern": "^[a-z0-9._()+-]{1,100}$",
+          "not": { "pattern": "\\.exe$" }
+        },
+        "category": { "$ref": "#/$defs/category" },
+        "note": { "$ref": "#/$defs/note" }
+      }
+    },
+    "siteRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["match", "value", "category"],
+      "properties": {
+        "match": {
+          "description": "exact: the site is exactly this value. suffix: the site is this value, or ends with a dot and this value (google.com matches docs.google.com but not notgoogle.com).",
+          "enum": ["exact", "suffix"]
+        },
+        "value": {
+          "description": "Lowercase host or domain, no www., no scheme, no path, no port. A suffix may be one label (edu); an exact value needs a dot.",
+          "type": "string",
+          "maxLength": 253,
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+        },
+        "category": { "$ref": "#/$defs/category" },
+        "note": { "$ref": "#/$defs/note" }
+      },
+      "if": { "properties": { "match": { "const": "exact" } }, "required": ["match"] },
+      "then": { "properties": { "value": { "pattern": "\\." } } }
+    }
+  }
+}

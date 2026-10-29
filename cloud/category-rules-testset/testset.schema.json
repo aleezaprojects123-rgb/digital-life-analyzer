@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:dla:category-rules-testset.schema.json",
+  "title": "DLA category rules test set (schema_version 1)",
+  "description": "Labelled examples for measuring the category rules. Only well-known public apps and sites and made-up generic titles. The repository is public: no real data.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "description", "examples"],
+  "properties": {
+    "schema_version": { "const": "1" },
+    "description": { "type": "string" },
+    "examples": {
+      "type": "array",
+      "minItems": 200,
+      "items": { "$ref": "#/$defs/example" }
+    }
+  },
+  "$defs": {
+    "category": { "enum": ["Study", "Work", "Entertainment", "Social Media", "Other"] },
+    "example": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "batch", "app", "site", "title", "category", "ambiguous", "also_acceptable", "note"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^t\\d{3,}$" },
+        "batch": {
+          "description": "A: written first; the rules were written with these in view. B: written after the rules file was frozen, from other angles, so the rules could not be fitted to them.",
+          "enum": ["A", "B"]
+        },
+        "app": {
+          "description": "Process name as the agent reports it (case and a trailing .exe vary). null for a site example.",
+          "type": ["string", "null"],
+          "pattern": "^[A-Za-z0-9._()+-]{1,100}$"
+        },
+        "site": {
+          "description": "Host of the page, lowercase, no www. null for an app example.",
+          "type": ["string", "null"],
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$"
+        },
+        "title": {
+          "description": "A made-up generic window or tab title, or null. Never a real title.",
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 80,
+          "pattern": "^[^@/\\\\]*$"
+        },
+        "category": { "$ref": "#/$defs/category" },
+        "ambiguous": {
+          "description": "true when sensible people could label it differently, or when it depends on how the app or site is used.",
+          "type": "boolean"
+        },
+        "also_acceptable": {
+          "description": "Other categories that would not be wrong. Empty unless ambiguous.",
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 4,
+          "items": { "$ref": "#/$defs/category" }
+        },
+        "note": { "type": ["string", "null"], "minLength": 1, "maxLength": 200 }
+      },
+      "oneOf": [
+        { "properties": { "app": { "type": "string" }, "site": { "type": "null" } } },
+        { "properties": { "app": { "type": "null" }, "site": { "type": "string" } } }
+      ],
+      "allOf": [
+        {
+          "if": { "properties": { "ambiguous": { "const": true } }, "required": ["ambiguous"] },
+          "then": { "properties": { "also_acceptable": { "minItems": 1 } } },
+          "else": { "properties": { "also_acceptable": { "maxItems": 0 } } }
+        }
+      ]
+    }
+  }
+}
