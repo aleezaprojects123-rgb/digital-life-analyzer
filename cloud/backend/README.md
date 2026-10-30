@@ -58,8 +58,8 @@ Stop it with `Ctrl+C`.
 & $py -m pytest
 ```
 
-- Without `TEST_DATABASE_URL` in your `.env`, the tests that need the database are **skipped** (the output says so), and the rest run (78 pass, 116 skipped).
-- With it, all 194 run against `dla_test`. **They wipe that database.** They refuse to run if its name does not end with `_test`.
+- Without `TEST_DATABASE_URL` in your `.env`, the tests that need the database are **skipped** (the output says so), and the rest run (107 pass, 183 skipped).
+- With it, all 290 run against `dla_test`. **They wipe that database.** They refuse to run if its name does not end with `_test`.
 - All test data is made up (`ali@example.com`, `test-password-1`). No real hashes or keys.
 
 ## Accounts (F9)
@@ -101,9 +101,30 @@ How it is kept safe:
 
 To try it by hand in the browser (http://127.0.0.1:8000/docs): register, then `POST /auth/login`, copy the `access_token` from the answer, click **Authorize** (top right), paste it, and call `GET /me`. Type the password in that page only.
 
+## Daily summaries (F8)
+
+Both routes need `Authorization: Bearer <access_token>` and `ENCRYPTION_KEY` in `.env` (see [../README.md](../README.md)). A user only ever reaches her own rows: the user id comes from the verified login, never from the address or the body.
+
+| Route | What it does |
+|---|---|
+| `PUT /summaries/{date}` | Body: the summary JSON of [Contract 2](../../contracts/summary-format.md), nothing added. `{date}` is `YYYY-MM-DD` and must equal `date` in the body. Answers `200` with `{"date", "result", "generated_at"}`. `result` is `created` (first summary for that day), `replaced` (the upload was newer than the stored one) or `ignored` (the stored one is as new or newer and stays). So sending the same summary twice changes nothing. |
+| `GET /summaries/{date}` | Your own summary for that day, decrypted, exactly as uploaded. `404` if you have none for that day. |
+
+A bad summary is **not stored** and gets `422` with `{"detail": {"message", "problems", "problems_not_shown"}}`. `problems` lists up to 20 lines such as `$.top_apps[0].name: 'Chapter 4 - Thermodynamics.pdf' does not match ...`; they come from the JSON Schema and the seven number checks of the contract (`app/summary_contract.py`). Other answers: `400` not JSON, `413` larger than 100,000 bytes, `401` not logged in (checked before the body is read), `503` no encryption key.
+
+Rules of this server **beyond the contract**, as sanity checks: `date` may be at most one day ahead of today (UTC), and `generated_at` at most one day ahead of now, because a far-future build time would stop later uploads from replacing the summary.
+
+**"The same day replaces the old one" follows the contract:** a *newer* `generated_at` replaces, an older or equal one is ignored. If you want every upload to replace, say so and Contract 2 must change too.
+
+### Encrypted at rest
+
+`app/crypto.py` encrypts each summary with **AES-256-GCM**, a fresh random nonce each time, using the key in `ENCRYPTION_KEY`. The user id and the date are part of what the encryption protects, so if someone with database access copies an encrypted summary into another user's row or another day, it fails to decrypt (the read answers `500`, with no data) instead of showing up there. The table holds no activity in readable form: only `user_id`, the date, the schema version, two times and the encrypted bytes. The tests check the stored bytes for readable text.
+
+This is **encryption at rest with a server key, not end-to-end encryption**: the server can read summaries (it must, to compute the score and forecast). That is the 27 Oct decision in Contract 1. Not done: key rotation, and a rule for what happens to old days (the 30-day deletion is for raw events on the PC, not for summaries).
+
 ## Checking a summary against Contract 2
 
-`app/summary_contract.py` checks a summary against the JSON Schema in `contracts/` and the seven "checks the server makes" from [contracts/summary-format.md](../../contracts/summary-format.md). `validate_summary(summary)` returns a list of problems; an empty list means valid. It is not connected to a route yet: the upload route (Day 4 and 8) will use it. Tests run it on the contract's samples and on [../mock/](../mock/README.md).
+`app/summary_contract.py` checks a summary against the JSON Schema in `contracts/` and the seven "checks the server makes" from [contracts/summary-format.md](../../contracts/summary-format.md). `validate_summary(summary)` returns a list of problems; an empty list means valid. The upload route uses it. Tests run it on the contract's samples and on [../mock/](../mock/README.md).
 
 ## The database today
 
@@ -134,9 +155,11 @@ The summary columns hold no activity data on their own: everything is inside the
 | `app/security.py` | Argon2id password hashing, signed login tokens and reset-link tokens. |
 | `app/auth.py` | `current_user`: reads the token, refuses logged-out or outdated ones, and loads that user. |
 | `app/mailer.py` | The mock mailer: prints the reset link in the server log. |
+| `app/crypto.py` | AES-256-GCM encryption of stored summaries. |
 | `app/summary_contract.py` | Checks a summary against Contract 2. |
 | `app/routes/health.py` | The two health routes. |
 | `app/routes/accounts.py` | `register`, `login`, `logout`, `forgot-password`, `reset-password`, `me`. |
+| `app/routes/summaries.py` | `PUT` and `GET /summaries/{date}`. |
 | `alembic.ini`, `migrations/` | Database migrations (Alembic). The address is read from `DATABASE_URL`, never written in these files. |
 | `tests/` | Automatic tests. |
 | `requirements.txt`, `requirements-dev.txt` | Packages, pinned to the tested versions. |

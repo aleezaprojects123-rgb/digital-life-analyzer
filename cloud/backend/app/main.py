@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .config import get_settings
-from .routes import accounts, health
+from .routes import accounts, health, summaries
 
 API_PREFIX = "/api/v1"
 
@@ -29,6 +29,7 @@ def create_app() -> FastAPI:
     app.add_exception_handler(RequestValidationError, validation_error)
     app.include_router(health.router, prefix=API_PREFIX)
     app.include_router(accounts.router, prefix=API_PREFIX)
+    app.include_router(summaries.router, prefix=API_PREFIX)
     return app
 
 

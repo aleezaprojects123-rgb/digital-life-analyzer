@@ -6,7 +6,7 @@ Everything here runs on a server or in a web browser, never on the user's PC. It
 
 | Part | What works today | What does not exist yet |
 |---|---|---|
-| [backend/](backend/README.md) | Register, log in, log out and password reset (F9) with Argon2 password hashes and signed tokens, `/me`, a mock mailer (reset link printed in the server log), health routes, database migrations, tests | Summary upload, reports, score, forecast, Stripe |
+| [backend/](backend/README.md) | Register, log in, log out and password reset (F9) with Argon2 password hashes and signed tokens, `/me`, a mock mailer (reset link printed in the server log), summary upload and read (`PUT`/`GET /summaries/{date}`, checked against Contract 2, AES-256-GCM at rest), health routes, database migrations, tests | Reports, score, forecast, Stripe |
 | Database | Tables `users`, `daily_summaries`, `revoked_tokens` and `password_reset_tokens` (migrations `0001` and `0002`) | Goals, payments (each gets its own migration when built) |
 | [frontend/](frontend/README.md) | React page with a status panel that asks the backend if it and its database are up | Register and login pages, reports, charts |
 | [mock/](mock/README.md) | A made-up day in Contract 2 format, checked by tests | More days (needed for the weekly report and the forecast) |
@@ -87,7 +87,16 @@ $secret = & $py -c "import secrets; print(secrets.token_urlsafe(48))"
 (Get-Content .env) -replace '^JWT_SECRET=.*$', "JWT_SECRET=$secret" | Set-Content .env
 ```
 
-Without this secret, login refuses to work. `ENCRYPTION_KEY` is needed later (summary upload), not now.
+Without this secret, login refuses to work.
+
+Now the key that encrypts stored summaries. Same idea: the key goes straight into `.env` and is not shown on screen.
+
+```
+$key = & $py -c "import secrets, base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())"
+(Get-Content .env) -replace '^ENCRYPTION_KEY=.*$', "ENCRYPTION_KEY=$key" | Set-Content .env
+```
+
+Without a good key (32 random bytes written as URL-safe base64, 44 characters), uploading and reading summaries answer `503`. **Back this key up somewhere safe that is not this repository.** If it is lost, every stored summary becomes unreadable (there is no key rotation yet). If it leaks, change it and the old summaries can no longer be read either.
 
 ### 4. Install and create the tables
 
@@ -98,7 +107,7 @@ cd cloud\backend
 & $py -m pytest
 ```
 
-`pytest` should end with `194 passed` (about 40 seconds). If it says some tests were **skipped**, `TEST_DATABASE_URL` is missing from `.env`.
+`pytest` should end with `290 passed` (about 60 seconds). If it says some tests were **skipped**, `TEST_DATABASE_URL` is missing from `.env`.
 
 ### 5. Install the dashboard packages
 

@@ -1,3 +1,5 @@
+import base64
+
 import pytest
 from alembic import command
 from alembic.config import Config
@@ -64,8 +66,12 @@ def app_db(test_db_url):
     engine.dispose()
 
 
-def build_client(engine, jwt_secret: str) -> TestClient:
-    """The real app, talking to the test database, with the given login secret."""
+# A made-up key for the tests only (the bytes 0..31). Never used anywhere else.
+TEST_ENCRYPTION_KEY = base64.urlsafe_b64encode(bytes(range(32))).decode()
+
+
+def build_client(engine, jwt_secret: str, encryption_key: str = TEST_ENCRYPTION_KEY) -> TestClient:
+    """The real app, talking to the test database, with the given login secret and encryption key."""
     app = create_app()
     make_session = sessionmaker(bind=engine, expire_on_commit=False)
 
@@ -74,13 +80,21 @@ def build_client(engine, jwt_secret: str) -> TestClient:
             yield session
 
     app.dependency_overrides[get_session] = test_session
-    app.dependency_overrides[get_settings] = lambda: Settings(_env_file=None, jwt_secret=jwt_secret)
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        _env_file=None, jwt_secret=jwt_secret, encryption_key=encryption_key
+    )
     return TestClient(app)
 
 
 @pytest.fixture
 def client(app_db) -> TestClient:
     return build_client(app_db, TEST_JWT_SECRET)
+
+
+@pytest.fixture
+def client_without_key(app_db) -> TestClient:
+    """The encryption key is not set, as on a PC that has not finished setup."""
+    return build_client(app_db, TEST_JWT_SECRET, encryption_key="")
 
 
 @pytest.fixture
