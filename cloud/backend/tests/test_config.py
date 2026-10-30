@@ -26,5 +26,15 @@ def test_secrets_have_no_default_value():
     assert settings.encryption_key == ""
 
 
+def test_the_reset_link_lasts_30_minutes_unless_set_otherwise():
+    assert make().reset_token_minutes == 30
+    assert make(reset_token_minutes=10).reset_token_minutes == 10
+
+
+def test_the_dashboard_address_defaults_to_the_local_dev_server_and_loses_a_trailing_slash():
+    assert make().dashboard_url == "http://localhost:5173"
+    assert make(app_base_url="https://dla.example.test/").dashboard_url == "https://dla.example.test"
+
+
 def test_cors_origins_are_split_on_commas():
     assert make(cors_origins="http://a.test, http://b.test,").cors_origin_list == ["http://a.test", "http://b.test"]

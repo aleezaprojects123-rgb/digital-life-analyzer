@@ -26,7 +26,7 @@ $py = "$env:USERPROFILE\.venvs\dla-backend\Scripts\python.exe"
 & $py -m alembic upgrade head
 ```
 
-This applies every migration in `migrations/versions/` to the database in `DATABASE_URL`. It prints `Running upgrade -> 0001`. Running it again changes nothing.
+This applies every migration in `migrations/versions/` to the database in `DATABASE_URL`. It prints `Running upgrade -> 0001` and `Running upgrade 0001 -> 0002`. Running it again changes nothing. If you made your database before logout and reset existed, run this again: migration `0002` adds the new tables and does not touch your accounts.
 
 Other useful commands:
 
@@ -58,8 +58,8 @@ Stop it with `Ctrl+C`.
 & $py -m pytest
 ```
 
-- Without `TEST_DATABASE_URL` in your `.env`, the tests that need the database are **skipped** (the output says so), and the rest run (67 pass, 64 skipped).
-- With it, all 131 run against `dla_test`. **They wipe that database.** They refuse to run if its name does not end with `_test`.
+- Without `TEST_DATABASE_URL` in your `.env`, the tests that need the database are **skipped** (the output says so), and the rest run (78 pass, 116 skipped).
+- With it, all 194 run against `dla_test`. **They wipe that database.** They refuse to run if its name does not end with `_test`.
 - All test data is made up (`ali@example.com`, `test-password-1`). No real hashes or keys.
 
 ## Accounts (F9)
@@ -70,14 +70,34 @@ All routes are under `/api/v1`. You can try them on the interactive page at http
 |---|---|
 | `POST /auth/register` | Body `{"email", "password"}`. Makes an account on the **free** plan and answers `201` with `id`, `email`, `plan`, `created_at`. `409` if the email is taken (letter case does not matter). `422` for a bad email, a password shorter than 8 or longer than 128 characters, or any extra field (nobody can pick a plan here). |
 | `POST /auth/login` | Same body. Answers `200` with `access_token` (a signed token, valid 8 hours) and `expires_in`. A wrong password and an unknown email both get the **same** `401`, so login can not be used to find out who has an account. |
-| `GET /me` | Header `Authorization: Bearer <access_token>`. Answers with the caller's own account. `401` without a token, with a token that is changed, expired, signed with another secret, or of an account that no longer exists. |
+| `GET /me` | Header `Authorization: Bearer <access_token>`. Answers with the caller's own account. `401` without a token, with a token that is changed, expired, signed with another secret, logged out, made before the last password reset, or of an account that no longer exists. |
+| `POST /auth/logout` | Header `Authorization: Bearer <access_token>`. Answers `204` and that token never works again. Her other logins (another browser) keep working. A second logout with the same token is a `401`. |
+| `POST /auth/forgot-password` | Body `{"email"}`. Always answers `202` with the same message, whether or not the email has an account. If it has one, a reset link is made and handed to the **mock mailer** (see below). |
+| `POST /auth/reset-password` | Body `{"token", "new_password"}` (the new password follows the same length rules as register). Answers `204` and every login she had before stops working. `400` with one message for a link that is wrong, expired or already used. `422` for a too short or too long password, and then the link is **not** used up. |
+
+### Password reset and the mock mailer
+
+There is **no real email yet**. The mock mailer (`app/mailer.py`) writes the message into the **server log**, in the window where you started `uvicorn`:
+
+```
+INFO:     dla.mailer: MOCK MAILER (no email is sent). Password reset link for ali@example.com, valid 30 minutes, works once: http://localhost:5173/reset-password#token=...
+```
+
+- The link holds a random one-time token (256 bits). It works **once** and **expires after 30 minutes** (`RESET_TOKEN_MINUTES` in `.env` changes this). Asking for a new link cancels the older ones. Using a link also cancels all other links of that account.
+- Only a SHA-256 hash of the token is stored, so a copy of the database holds no working links. The token is after the `#` in the link, so a browser never sends it to any server.
+- The link starts with `APP_BASE_URL` from `.env` (the dashboard's address), or `http://localhost:5173` if that is empty. The dashboard page that opens it comes in step 4 of Day 3.
+- **The log holds a working link. That is fine for development only.** Before a real launch, replace `LogMailer` with a real mailer; the routes only call `send_password_reset`, so nothing else changes. Never turn this mock on for a server other people use.
+
+### Logging out
+
+A login token is a signed JWT, so the server can not "forget" it. Each token therefore carries its own id (`jti`). Logging out writes that id into `revoked_tokens` (only the id and the token's expiry date, nothing about the user), and every request checks that table. Rows are deleted once the token would have expired anyway. A password reset also raises the user's `token_version`, which ends all her older tokens at once.
 
 How it is kept safe:
 
 - **Passwords** are stored only as an Argon2id hash with a random salt (`app/security.py`). The password is never stored, logged or sent back, not even inside an error message.
 - **Tokens** are signed with `JWT_SECRET` (at least 32 characters). If it is missing or short, login and `/me` answer `503` instead of making weak tokens. A token holds only the user id and its times.
 - **One user can only reach her own data.** `/me` takes the user id from the verified token, never from the request. Any route added later that shows account data must depend on `current_user` (`app/auth.py`) and ask only for rows of that user.
-- **Not done yet:** log out and password reset (Day 3), and limits on repeated wrong passwords. Register and login pages in the dashboard are also still to do.
+- **Not done yet:** limits on repeated wrong passwords and on how often a reset link can be requested (anyone can ask for many links for an email; each new one cancels the older ones). Register, login and reset pages in the dashboard are also still to do.
 
 To try it by hand in the browser (http://127.0.0.1:8000/docs): register, then `POST /auth/login`, copy the `access_token` from the answer, click **Authorize** (top right), paste it, and call `GET /me`. Type the password in that page only.
 
@@ -89,7 +109,9 @@ To try it by hand in the browser (http://127.0.0.1:8000/docs): register, then `P
 
 | Table | Holds |
 |---|---|
-| `users` | `id`, `email` (always lowercase, unique), `password_hash` (never the password), `plan` (`free` or `pro`), `created_at` |
+| `users` | `id`, `email` (always lowercase, unique), `password_hash` (never the password), `plan` (`free` or `pro`), `created_at`, `token_version` (raised by a password reset) |
+| `revoked_tokens` | Logged-out login tokens: `jti` (the token's id) and `expires_at`. Nothing else. |
+| `password_reset_tokens` | One row per reset link: `user_id`, `token_hash` (SHA-256, never the token), `expires_at`, `used_at`. Deleting a user deletes hers. |
 | `daily_summaries` | One row per user per day: `user_id`, `summary_date`, `schema_version`, `generated_at`, `received_at`, and `payload_encrypted` (the summary, encrypted with the server key). Deleting a user deletes her summaries. |
 
 The summary columns hold no activity data on their own: everything is inside the encrypted payload.
@@ -108,12 +130,13 @@ The summary columns hold no activity data on their own: everything is inside the
 | `app/config.py` | Settings from `.env`. Secrets have no default value. |
 | `app/db.py` | The database connection, created on first use. |
 | `app/models.py` | The tables. |
-| `app/schemas.py` | What register and login accept and return (email tidied, password length limits, no extra fields). |
-| `app/security.py` | Argon2id password hashing and signed tokens. |
-| `app/auth.py` | `current_user`: reads the token and loads that user. |
+| `app/schemas.py` | What the account routes accept and return (email tidied, password length limits, no extra fields). |
+| `app/security.py` | Argon2id password hashing, signed login tokens and reset-link tokens. |
+| `app/auth.py` | `current_user`: reads the token, refuses logged-out or outdated ones, and loads that user. |
+| `app/mailer.py` | The mock mailer: prints the reset link in the server log. |
 | `app/summary_contract.py` | Checks a summary against Contract 2. |
 | `app/routes/health.py` | The two health routes. |
-| `app/routes/accounts.py` | `register`, `login`, `me`. |
+| `app/routes/accounts.py` | `register`, `login`, `logout`, `forgot-password`, `reset-password`, `me`. |
 | `alembic.ini`, `migrations/` | Database migrations (Alembic). The address is read from `DATABASE_URL`, never written in these files. |
 | `tests/` | Automatic tests. |
 | `requirements.txt`, `requirements-dev.txt` | Packages, pinned to the tested versions. |

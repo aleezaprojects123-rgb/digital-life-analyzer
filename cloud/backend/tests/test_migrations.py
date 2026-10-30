@@ -39,12 +39,58 @@ def add_summary(connection, user_id, day="2026-10-27"):
 
 
 def test_upgrade_creates_the_tables(migrated_db):
-    assert set(inspect(migrated_db).get_table_names()) == {"users", "daily_summaries", "alembic_version"}
+    assert set(inspect(migrated_db).get_table_names()) == {
+        "users",
+        "daily_summaries",
+        "revoked_tokens",
+        "password_reset_tokens",
+        "alembic_version",
+    }
 
 
 def test_users_columns(migrated_db):
     columns = {c["name"] for c in inspect(migrated_db).get_columns("users")}
-    assert columns == {"id", "email", "password_hash", "plan", "created_at"}
+    assert columns == {"id", "email", "password_hash", "plan", "created_at", "token_version"}
+
+
+def test_revoked_tokens_hold_only_the_token_id_and_its_expiry(migrated_db):
+    columns = {c["name"] for c in inspect(migrated_db).get_columns("revoked_tokens")}
+    assert columns == {"jti", "expires_at"}
+
+
+def test_password_reset_tokens_columns_hold_no_plain_token(migrated_db):
+    columns = {c["name"] for c in inspect(migrated_db).get_columns("password_reset_tokens")}
+    assert columns == {"id", "user_id", "token_hash", "created_at", "expires_at", "used_at"}
+
+
+def test_a_user_starts_at_token_version_zero(migrated_db):
+    with migrated_db.begin() as connection:
+        user_id = add_user(connection)
+        version = connection.execute(text("SELECT token_version FROM users WHERE id = :i"), {"i": user_id}).scalar_one()
+    assert version == 0
+
+
+def test_reset_token_hashes_are_unique(migrated_db):
+    insert = text(
+        "INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES (:u, :h, now() + interval '1 hour')"
+    )
+    with pytest.raises(IntegrityError):
+        with migrated_db.begin() as connection:
+            user_id = add_user(connection)
+            connection.execute(insert, {"u": user_id, "h": "a" * 64})
+            connection.execute(insert, {"u": user_id, "h": "a" * 64})
+
+
+def test_deleting_a_user_deletes_her_reset_tokens(migrated_db):
+    with migrated_db.begin() as connection:
+        user_id = add_user(connection)
+        connection.execute(
+            text("INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES (:u, :h, now())"),
+            {"u": user_id, "h": "b" * 64},
+        )
+        connection.execute(text("DELETE FROM users WHERE id = :i"), {"i": user_id})
+        count = connection.execute(text("SELECT count(*) FROM password_reset_tokens")).scalar_one()
+    assert count == 0
 
 
 def test_daily_summaries_hold_no_activity_columns(migrated_db):
@@ -124,6 +170,16 @@ def test_migration_and_models_agree(migrated_db):
 def test_downgrade_removes_the_tables(migrated_db, test_db_url):
     command.downgrade(alembic_config(test_db_url), "base")
     assert set(inspect(migrated_db).get_table_names()) == {"alembic_version"}
+
+
+def test_downgrade_one_step_keeps_accounts_and_removes_the_reset_tables(migrated_db, test_db_url):
+    with migrated_db.begin() as connection:
+        add_user(connection)
+    command.downgrade(alembic_config(test_db_url), "0001")
+    assert set(inspect(migrated_db).get_table_names()) == {"users", "daily_summaries", "alembic_version"}
+    assert "token_version" not in {c["name"] for c in inspect(migrated_db).get_columns("users")}
+    with migrated_db.connect() as connection:
+        assert connection.execute(text("SELECT count(*) FROM users")).scalar_one() == 1
 
 
 def test_upgrade_can_run_twice(migrated_db, test_db_url):

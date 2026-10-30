@@ -38,7 +38,10 @@ class Settings(BaseSettings):
     # How long a login stays valid (minutes). 480 = 8 hours.
     access_token_minutes: int = 480
     encryption_key: str = ""
+    # The dashboard's address, used to build the link in a password reset email.
     app_base_url: str = ""
+    # How long a password reset link works (minutes).
+    reset_token_minutes: int = 30
     # Web addresses allowed to call the API from a browser, separated by commas.
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
@@ -49,6 +52,10 @@ class Settings(BaseSettings):
     @property
     def sqlalchemy_test_url(self) -> str:
         return _psycopg_url(self.test_database_url)
+
+    @property
+    def dashboard_url(self) -> str:
+        return (self.app_base_url.strip() or "http://localhost:5173").rstrip("/")
 
     @property
     def cors_origin_list(self) -> list[str]:

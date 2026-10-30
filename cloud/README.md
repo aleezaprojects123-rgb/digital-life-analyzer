@@ -6,8 +6,8 @@ Everything here runs on a server or in a web browser, never on the user's PC. It
 
 | Part | What works today | What does not exist yet |
 |---|---|---|
-| [backend/](backend/README.md) | Register and log in (F9) with Argon2 password hashes and signed tokens, `/me`, health routes, database migrations, tests | Log out, password reset, summary upload, reports, score, forecast, Stripe |
-| Database | Tables `users` and `daily_summaries` (migration `0001`) | Password reset, goals, payments (each gets its own migration when built) |
+| [backend/](backend/README.md) | Register, log in, log out and password reset (F9) with Argon2 password hashes and signed tokens, `/me`, a mock mailer (reset link printed in the server log), health routes, database migrations, tests | Summary upload, reports, score, forecast, Stripe |
+| Database | Tables `users`, `daily_summaries`, `revoked_tokens` and `password_reset_tokens` (migrations `0001` and `0002`) | Goals, payments (each gets its own migration when built) |
 | [frontend/](frontend/README.md) | React page with a status panel that asks the backend if it and its database are up | Register and login pages, reports, charts |
 | [mock/](mock/README.md) | A made-up day in Contract 2 format, checked by tests | More days (needed for the weekly report and the forecast) |
 
@@ -98,7 +98,7 @@ cd cloud\backend
 & $py -m pytest
 ```
 
-`pytest` should end with `131 passed` (about 30 seconds). If it says some tests were **skipped**, `TEST_DATABASE_URL` is missing from `.env`.
+`pytest` should end with `194 passed` (about 40 seconds). If it says some tests were **skipped**, `TEST_DATABASE_URL` is missing from `.env`.
 
 ### 5. Install the dashboard packages
 

@@ -36,12 +36,63 @@ def test_a_broken_stored_hash_never_verifies(broken):
 def test_token_round_trip_gives_back_the_user_id():
     user_id = uuid.uuid4()
     token = security.create_access_token(user_id, SECRET, minutes=5)
-    assert security.decode_access_token(token, SECRET) == user_id
+    assert security.decode_access_token(token, SECRET).user_id == user_id
 
 
-def test_token_holds_only_subject_and_times():
+def test_token_round_trip_gives_back_its_id_version_and_expiry():
+    jti = uuid.uuid4()
+    now = dt.datetime.now(dt.timezone.utc)
+    token = security.create_access_token(uuid.uuid4(), SECRET, minutes=5, now=now, version=3, jti=jti)
+    claims = security.decode_access_token(token, SECRET)
+    assert claims.jti == jti
+    assert claims.version == 3
+    assert abs((claims.expires_at - (now + dt.timedelta(minutes=5))).total_seconds()) < 1
+
+
+def test_every_token_gets_its_own_id():
+    user_id = uuid.uuid4()
+    first = security.decode_access_token(security.create_access_token(user_id, SECRET, minutes=5), SECRET)
+    second = security.decode_access_token(security.create_access_token(user_id, SECRET, minutes=5), SECRET)
+    assert first.jti != second.jti
+
+
+def test_token_holds_only_the_ids_the_version_and_times():
     token = security.create_access_token(uuid.uuid4(), SECRET, minutes=5)
-    assert set(jwt.decode(token, SECRET, algorithms=["HS256"])) == {"sub", "iat", "exp"}
+    assert set(jwt.decode(token, SECRET, algorithms=["HS256"])) == {"sub", "iat", "exp", "jti", "ver"}
+
+
+@pytest.mark.parametrize("missing", ["jti", "ver"])
+def test_token_without_its_own_id_or_version_is_refused(missing):
+    claims = {
+        "sub": str(uuid.uuid4()),
+        "exp": dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=5),
+        "jti": str(uuid.uuid4()),
+        "ver": 0,
+    }
+    del claims[missing]
+    with pytest.raises(security.InvalidToken):
+        security.decode_access_token(jwt.encode(claims, SECRET, algorithm="HS256"), SECRET)
+
+
+@pytest.mark.parametrize("version", ["0", True, 1.5, None])
+def test_token_whose_version_is_not_a_whole_number_is_refused(version):
+    claims = {
+        "sub": str(uuid.uuid4()),
+        "exp": dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=5),
+        "jti": str(uuid.uuid4()),
+        "ver": version,
+    }
+    with pytest.raises(security.InvalidToken):
+        security.decode_access_token(jwt.encode(claims, SECRET, algorithm="HS256"), SECRET)
+
+
+def test_reset_tokens_are_random_long_and_stored_only_as_a_hash():
+    first, first_hash = security.new_reset_token()
+    second, second_hash = security.new_reset_token()
+    assert first != second and first_hash != second_hash
+    assert len(first) >= 43  # 32 random bytes
+    assert first_hash == security.hash_reset_token(first)
+    assert len(first_hash) == 64 and first not in first_hash
 
 
 def test_token_expires():

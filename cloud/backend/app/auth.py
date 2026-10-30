@@ -1,13 +1,15 @@
 """Finding out who is calling: reads the login token and loads that user."""
 
+from dataclasses import dataclass
+
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from .config import Settings, get_settings
 from .db import get_session
-from .models import User
-from .security import MIN_SECRET_LENGTH, InvalidToken, decode_access_token
+from .models import RevokedToken, User
+from .security import MIN_SECRET_LENGTH, InvalidToken, TokenClaims, decode_access_token
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -24,21 +26,37 @@ def not_authenticated() -> HTTPException:
     )
 
 
-def current_user(
+@dataclass(frozen=True)
+class Auth:
+    user: User
+    token: TokenClaims
+
+
+def current_auth(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
     settings: Settings = Depends(get_settings),
     session: Session = Depends(get_session),
-) -> User:
-    """The logged-in user. Every route that shows or changes account data depends on this, and then
-    asks only for rows that belong to the returned user."""
+) -> Auth:
+    """The logged-in user and the token she used. A token is refused when it is changed, expired, logged out,
+    or made before her last password reset."""
     require_auth_configured(settings)
     if credentials is None:
         raise not_authenticated()
     try:
-        user_id = decode_access_token(credentials.credentials, settings.jwt_secret)
+        claims = decode_access_token(credentials.credentials, settings.jwt_secret)
     except InvalidToken:
         raise not_authenticated() from None
-    user = session.get(User, user_id)
+    if session.get(RevokedToken, claims.jti) is not None:  # logged out
+        raise not_authenticated()
+    user = session.get(User, claims.user_id)
     if user is None:  # for example, the account was deleted after the token was made
         raise not_authenticated()
-    return user
+    if user.token_version != claims.version:  # her password was reset after this token was made
+        raise not_authenticated()
+    return Auth(user=user, token=claims)
+
+
+def current_user(auth: Auth = Depends(current_auth)) -> User:
+    """The logged-in user. Every route that shows or changes account data depends on this, and then
+    asks only for rows that belong to the returned user."""
+    return auth.user

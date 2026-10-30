@@ -58,7 +58,8 @@ def app_db(test_db_url):
     command.upgrade(alembic_config(test_db_url), "head")
     engine = create_engine(test_db_url)
     with engine.begin() as connection:
-        connection.execute(text("TRUNCATE users CASCADE"))
+        # revoked_tokens has no link to users, so CASCADE would not reach it
+        connection.execute(text("TRUNCATE users, revoked_tokens CASCADE"))
     yield engine
     engine.dispose()
 
