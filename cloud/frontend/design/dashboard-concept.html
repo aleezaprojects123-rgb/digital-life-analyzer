@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Digital Life Analyzer — Dashboard concept</title>
+<style>
+:root{color-scheme:light;--bg:#f5f7fb;--surface:#fff;--ink:#17233d;--muted:#65728a;--line:#e3e9f3;--accent:#356ae6;--accent-soft:#edf3ff;--teal:#23a7a0;--purple:#8a76db;--pink:#d86bb2;--shadow:0 8px 28px rgba(34,56,96,.07);--radius:18px}
+[data-theme="dark"]{color-scheme:dark;--bg:#101827;--surface:#182337;--ink:#edf3ff;--muted:#a6b3c9;--line:#2c3b53;--accent:#7ea2ff;--accent-soft:#243556;--teal:#4ac7bd;--purple:#aa9af2;--pink:#ed8bc8;--shadow:0 8px 28px rgba(0,0,0,.18)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+button{font:inherit;cursor:pointer}.app{max-width:1280px;margin:auto;padding:24px}
+.topbar{display:flex;align-items:center;gap:26px;padding:16px 20px;background:var(--surface);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow);position:sticky;top:10px;z-index:2}
+.brand{display:flex;align-items:center;gap:11px;font-weight:750;letter-spacing:-.03em;white-space:nowrap;font-size:17px}.logo{width:38px;height:38px;display:grid;place-items:center;border-radius:12px;background:var(--accent-soft);color:var(--accent);font-size:22px}
+nav{display:flex;gap:5px;align-items:center}nav button,.switch button,.theme-toggle{border:0;background:transparent;color:var(--muted);border-radius:10px;padding:10px 14px}
+nav button.active,.switch button.active{background:var(--accent-soft);color:var(--accent);font-weight:700}
+.privacy{margin-left:auto;color:var(--muted);font-size:12px;display:flex;align-items:center;gap:7px;white-space:nowrap}.shield{color:var(--teal);font-size:16px}.theme-toggle{border:1px solid var(--line);padding:8px 10px;color:var(--ink)}
+main{padding:28px 2px}.page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:22px}.eyebrow{color:var(--muted);font-size:13px;margin-bottom:5px}h1{font-size:clamp(26px,3vw,34px);letter-spacing:-.04em;line-height:1.15;margin:0}h2{font-size:17px;margin:0 0 14px;letter-spacing:-.02em}.subtle{color:var(--muted);font-size:13px}
+.grid{display:grid;gap:16px}.summary-grid{grid-template-columns:1.15fr repeat(5,minmax(0,1fr));margin-bottom:16px}.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow);min-width:0}
+.total-card{background:linear-gradient(135deg,var(--accent-soft),var(--surface) 88%);display:flex;flex-direction:column;justify-content:center;min-height:146px}.total-label{font-size:13px;color:var(--muted);font-weight:650}.total-time{font-size:clamp(30px,3.5vw,42px);font-weight:780;letter-spacing:-.05em;margin-top:8px;white-space:nowrap}
+.platform-card{padding:17px 14px;min-height:146px}.platform-top{display:flex;align-items:center;gap:8px;font-weight:700;font-size:13px}.platform-icon{width:28px;height:28px;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent);border-radius:9px;font-size:15px;flex-shrink:0}.platform-time{font-size:22px;letter-spacing:-.04em;font-weight:750;margin:15px 0 2px}.platform-count{color:var(--muted);font-size:12px}
+.highlight{display:flex;align-items:center;gap:10px;background:var(--accent-soft);border:1px solid var(--line);border-radius:14px;padding:15px 18px;margin:0 0 18px;font-weight:700}.spark{color:var(--accent);font-size:19px}
+.lower-grid{grid-template-columns:1.05fr 1.4fr}.chart-card{min-height:300px}.donut-layout{display:flex;align-items:center;justify-content:center;gap:28px;min-height:210px;flex-wrap:wrap}.donut{width:178px;height:178px;border-radius:50%;background:conic-gradient(var(--accent) 0 31%,var(--teal) 31% 53%,var(--purple) 53% 72%,var(--pink) 72% 86%,#9ca9bb 86% 100%);display:grid;place-items:center;position:relative}.donut:before{content:"";width:112px;height:112px;border-radius:50%;background:var(--surface);position:absolute}.donut-center{position:relative;text-align:center;font-weight:750;font-size:23px;letter-spacing:-.04em}.donut-center small{display:block;color:var(--muted);font-size:12px;letter-spacing:0;font-weight:500}
+.legend{display:grid;gap:12px;min-width:145px}.legend-row{display:flex;align-items:center;gap:9px;font-size:13px}.swatch{width:9px;height:9px;border-radius:3px;flex-shrink:0}.legend-row strong{margin-left:auto;padding-left:12px;font-weight:650}
+.bar-chart{height:220px;display:flex;align-items:stretch;gap:clamp(8px,2vw,20px);padding:12px 8px 0;border-bottom:1px solid var(--line);background:repeating-linear-gradient(to bottom,transparent 0,transparent 53px,var(--line) 54px,var(--line) 55px);background-position:0 10px}
+.bar-col{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;min-width:0;gap:7px}.bar-space{height:172px;width:100%;display:flex;align-items:flex-end;justify-content:center}.bar{width:min(42px,72%);min-height:2px;background:var(--accent);border-radius:7px 7px 2px 2px;opacity:.9}.bar-day{font-size:12px;font-weight:650}.bar-time{font-size:11px;color:var(--muted);white-space:nowrap}
+.report-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px}.switch{display:flex;gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:4px}.switch button{padding:8px 12px}.status{border-radius:100px;padding:7px 11px;font-size:12px;font-weight:700;background:#e8f6f0;color:#217d60}.status.done{background:var(--accent-soft);color:var(--accent)}
+.report-top{display:grid;grid-template-columns:.7fr 1.5fr;gap:16px;margin-bottom:16px}.report-total{display:flex;flex-direction:column;justify-content:center}.report-total .total-time{font-size:38px}.report-date{font-size:14px;color:var(--muted);margin-bottom:20px}
+.platforms-week{grid-template-columns:repeat(5,minmax(0,1fr));margin:16px 0}.platforms-week .card{padding:17px}.comparison{text-align:center;color:var(--ink);background:var(--accent-soft);border-radius:14px;padding:15px;font-weight:700}.comparison span{color:var(--accent);font-size:18px;margin-right:7px}
+.state-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:26px}.state-card{text-align:center;min-height:200px;display:flex;flex-direction:column;align-items:center;justify-content:center}.state-art{width:50px;height:50px;border-radius:15px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;font-size:24px;margin-bottom:12px}.state-card h3{font-size:15px;margin:0 0 5px}.state-card p{font-size:12px;color:var(--muted);max-width:245px;margin:0}.empty-inline{display:none;text-align:center;padding:38px 18px}.empty-inline .state-art{margin:0 auto 12px}.hidden{display:none!important}
+.mobile-note{display:none;color:var(--muted);font-size:12px;margin:0 0 12px}
+@media(max-width:1000px){.summary-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.total-card{grid-column:span 1}.lower-grid{grid-template-columns:1fr}.platforms-week{grid-template-columns:repeat(3,minmax(0,1fr))}.topbar{flex-wrap:wrap;gap:12px}.privacy{margin-left:auto}}
+@media(max-width:600px){.app{padding:12px}.topbar{position:static;padding:13px;border-radius:15px;gap:10px}.brand{font-size:15px}.logo{width:33px;height:33px}.privacy{order:3;width:100%;margin:0}.theme-toggle{margin-left:auto}nav{width:100%;order:2;display:grid;grid-template-columns:repeat(3,1fr);background:var(--bg);border-radius:12px;padding:3px}nav button{padding:9px 5px}.page-head{align-items:flex-start;flex-direction:column;margin-bottom:17px}main{padding-top:23px}.summary-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.total-card{grid-column:span 2;min-height:125px}.platform-card{padding:13px 12px;min-height:128px}.platform-time{font-size:20px;margin-top:12px}.platform-top{font-size:12px}.highlight{font-size:13px;padding:13px}.card{padding:16px;border-radius:15px}.lower-grid,.report-top{grid-template-columns:1fr}.report-total .total-time{font-size:35px}.report-date{margin-bottom:10px}.platforms-week{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.platforms-week .card{padding:14px}.platforms-week .platform-time{font-size:19px}.bar-chart{gap:5px;padding-left:0;padding-right:0}.bar-day{font-size:11px}.bar-time{font-size:10px;white-space:normal;text-align:center}.state-grid{grid-template-columns:1fr}.donut-layout{gap:22px}.donut{width:160px;height:160px}.donut:before{width:100px;height:100px}.mobile-note{display:block}}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+<header class="topbar">
+  <div class="brand"><span class="logo" aria-hidden="true">✳</span><span>Digital Life Analyzer</span></div>
+  <nav aria-label="Reports">
+    <button class="active" data-page="today">Today</button><button data-page="weekly">Weekly</button><button data-page="monthly">Monthly</button>
+  </nav>
+  <div class="privacy"><span class="shield" aria-hidden="true">◆</span>Your data stays on this PC</div>
+  <button class="theme-toggle" id="theme" aria-label="Toggle dark theme">☾ Theme</button>
+</header>
+<main>
+<section id="today" class="page">
+  <div class="page-head"><div><div class="eyebrow">Your daily overview</div><h1>Saturday, 31 October</h1></div><div class="subtle">Times shown in hours and minutes</div></div>
+  <div class="grid summary-grid">
+    <article class="card total-card"><div class="total-label">Total tracked time today</div><div class="total-time">2h 17m</div></article>
+    <article class="card platform-card"><div class="platform-top"><span class="platform-icon">◎</span>Instagram</div><div class="platform-time">0h 42m</div><div class="platform-count">42 reels</div></article>
+    <article class="card platform-card"><div class="platform-top"><span class="platform-icon">▶</span>YouTube</div><div class="platform-time">0h 50m</div><div class="platform-count">28 shorts · videos</div></article>
+    <article class="card platform-card"><div class="platform-top"><span class="platform-icon">♪</span>TikTok</div><div class="platform-time">0h 38m</div><div class="platform-count">38 videos</div></article>
+    <article class="card platform-card"><div class="platform-top"><span class="platform-icon">f</span>Facebook</div><div class="platform-time">0h 27m</div><div class="platform-count">27 reels</div></article>
+    <article class="card platform-card"><div class="platform-top"><span class="platform-icon">◎</span>Other sites</div><div class="platform-time">0h 20m</div><div class="platform-count">Combined time</div></article>
+  </div>
+  <div class="highlight"><span class="spark">✦</span><span>200 Reels in 2h 17m</span></div>
+  <div class="grid lower-grid">
+    <article class="card chart-card"><h2>Today's time by platform</h2><div class="donut-layout"><div class="donut" aria-label="Illustrative time share chart"><div class="donut-center">2h 17m<small>Total</small></div></div><div class="legend">
+      <div class="legend-row"><span class="swatch" style="background:var(--accent)"></span>Instagram<strong>31%</strong></div>
+      <div class="legend-row"><span class="swatch" style="background:var(--teal)"></span>YouTube<strong>36%</strong></div>
+      <div class="legend-row"><span class="swatch" style="background:var(--purple)"></span>TikTok<strong>27%</strong></div>
+      <div class="legend-row"><span class="swatch" style="background:var(--pink)"></span>Facebook<strong>20%</strong></div>
+      <div class="legend-row"><span class="swatch" style="background:#9ca9bb"></span>Other<strong>15%</strong></div>
+    </div></div></article>
+    <article class="card chart-card"><h2>A gentle note</h2><p class="subtle">Your time is shown clearly, without scores or judgement. Use these summaries to understand your own patterns at your pace.</p><div class="comparison" style="margin-top:28px;text-align:left"><span>✦</span>Your activity, your choice.</div></article>
+  </div>
+  <article class="card empty-inline" id="todayEmpty"><div class="state-art">◌</div><h3>Nothing tracked yet today.</h3><p>When activity is available, your summary will appear here.</p></article>
+</section>
+
+<section id="weekly" class="page hidden">
+  <div class="page-head"><div><div class="eyebrow">A wider view</div><h1>Weekly report</h1></div></div>
+  <div class="report-controls"><div class="switch"><button class="active" data-period="week-current">This week</button><button data-period="week-previous">Previous week</button></div><span class="status" id="weekStatus">In progress</span></div>
+  <div class="report-top"><article class="card report-total"><div class="report-date" id="weekRange">Mon, 27 Oct – Sun, 02 Nov</div><div class="total-label">Total tracked time</div><div class="total-time" id="weekTotal">12h 48m</div></article>
+  <article class="card"><h2>Time per day</h2><div class="bar-chart" id="weekChart"></div></article></div>
+  <div class="grid platforms-week" id="weekPlatforms"></div>
+  <div class="comparison" id="weekComparison"><span>↗</span>+1h 20m vs last week</div>
+  <article class="card empty-inline" id="weekEmpty"><div class="state-art">◌</div><h3 id="weekEmptyTitle">No activity yet this week</h3><p>Your report will fill in as tracked time becomes available.</p></article>
+</section>
+
+<section id="monthly" class="page hidden">
+  <div class="page-head"><div><div class="eyebrow">The bigger picture</div><h1>Monthly report</h1></div></div>
+  <div class="report-controls"><div class="switch"><button class="active" data-period="month-current">This month</button><button data-period="month-previous">Previous month</button></div><span class="status" id="monthStatus">In progress</span></div>
+  <div class="report-top"><article class="card report-total"><div class="report-date" id="monthRange">Oct 1 – Oct 31</div><div class="total-label">Total tracked time</div><div class="total-time" id="monthTotal">52h 14m</div></article>
+  <article class="card"><h2>Time per week block</h2><div class="bar-chart" id="monthChart"></div></article></div>
+  <div class="grid platforms-week" id="monthPlatforms"></div>
+  <div class="comparison" id="monthComparison"><span>↗</span>+3h 15m vs last month</div>
+  <article class="card empty-inline" id="monthEmpty"><div class="state-art">◌</div><h3 id="monthEmptyTitle">No activity yet this month</h3><p>Your report will fill in as tracked time becomes available.</p></article>
+</section>
+
+<section class="state-section" aria-label="App states">
+  <div class="page-head" style="margin-top:32px"><div><div class="eyebrow">Interface states</div><h1 style="font-size:23px">When the app needs a moment</h1></div></div>
+  <div class="state-grid">
+    <article class="card state-card"><div class="state-art">◌</div><h3>Loading your data…</h3><p>Fetching your latest data. This usually takes a moment.</p></article>
+    <article class="card state-card"><div class="state-art">⌁</div><h3>Can't reach the Digital Life Analyzer app on this PC</h3><p>Please check the tray icon, then try again.</p></article>
+    <article class="card state-card"><div class="state-art">▤</div><h3>Nothing tracked yet</h3><p>Start using Digital Life Analyzer to see your time summaries here.</p></article>
+  </div>
+</section>
+</main>
+</div>
+<script>
+const platforms = [
+  {name:'Instagram',icon:'◎',time:'4h 20m',count:'85 reels'},
+  {name:'YouTube',icon:'▶',time:'3h 25m',count:'70 shorts · videos'},
+  {name:'TikTok',icon:'♪',time:'2h 45m',count:'65 videos'},
+  {name:'Facebook',icon:'f',time:'1h 50m',count:'55 reels'},
+  {name:'Other sites',icon:'◎',time:'1h 18m',count:'Combined time'}
+];
+const weekCurrent = [{d:'Mon',t:'2h 12m',h:72},{d:'Tue',t:'1h 50m',h:60},{d:'Wed',t:'2h 05m',h:68},{d:'Thu',t:'1h 45m',h:57},{d:'Fri',t:'1h 36m',h:52},{d:'Sat',t:'1h 10m',h:38},{d:'Sun',t:'0h',h:2}];
+const weekPrevious = [{d:'Mon',t:'1h 30m',h:49},{d:'Tue',t:'1h 45m',h:57},{d:'Wed',t:'1h 20m',h:43},{d:'Thu',t:'2h 10m',h:71},{d:'Fri',t:'1h 25m',h:46},{d:'Sat',t:'1h 18m',h:42},{d:'Sun',t:'0h',h:2}];
+const monthCurrent = [{d:'Week 1',t:'11h 20m',h:58},{d:'Week 2',t:'13h 40m',h:70},{d:'Week 3',t:'11h 30m',h:59},{d:'Week 4',t:'18h 45m',h:96},{d:'Week 5',t:'14h 20m',h:73}];
+const monthPrevious = [{d:'Week 1',t:'10h 10m',h:52},{d:'Week 2',t:'12h 15m',h:63},{d:'Week 3',t:'9h 50m',h:50},{d:'Week 4',t:'15h 30m',h:79}];
+function renderBars(id,data){document.getElementById(id).innerHTML=data.map(x=>`<div class="bar-col"><div class="bar-space"><div class="bar" style="height:${x.h}%"></div></div><div class="bar-day">${x.d}</div><div class="bar-time">${x.t}</div></div>`).join('')}
+function renderPlatforms(id,data){document.getElementById(id).innerHTML=data.map(p=>`<article class="card platform-card"><div class="platform-top"><span class="platform-icon">${p.icon}</span>${p.name}</div><div class="platform-time">${p.time}</div><div class="platform-count">${p.count}</div></article>`).join('')}
+renderBars('weekChart',weekCurrent);renderBars('monthChart',monthCurrent);renderPlatforms('weekPlatforms',platforms);renderPlatforms('monthPlatforms',[
+ {...platforms[0],time:'14h 20m',count:'280 reels'},
+ {...platforms[1],time:'12h 50m',count:'240 shorts · videos'},
+ {...platforms[2],time:'11h 30m',count:'230 videos'},
+ {...platforms[3],time:'8h 25m',count:'170 reels'},
+ {...platforms[4],time:'5h 39m',count:'Combined time'}
+]);
+document.querySelectorAll('nav button').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b===btn));document.querySelectorAll('.page').forEach(p=>p.classList.toggle('hidden',p.id!==btn.dataset.page))}));
+document.getElementById('theme').addEventListener('click',()=>{const root=document.documentElement;const dark=root.getAttribute('data-theme')==='dark';root.setAttribute('data-theme',dark?'light':'dark');document.getElementById('theme').textContent=dark?'☾ Theme':'☀ Theme'});
+document.querySelectorAll('[data-period]').forEach(btn=>btn.addEventListener('click',()=>{
+ const isWeek=btn.dataset.period.startsWith('week');const previous=btn.dataset.period.endsWith('previous');const group=btn.parentElement;group.querySelectorAll('button').forEach(b=>b.classList.toggle('active',b===btn));
+ if(isWeek){renderBars('weekChart',previous?weekPrevious:weekCurrent);document.getElementById('weekStatus').textContent=previous?'Completed':'In progress';document.getElementById('weekStatus').classList.toggle('done',previous);document.getElementById('weekRange').textContent=previous?'Mon, 20 Oct – Sun, 26 Oct':'Mon, 27 Oct – Sun, 02 Nov';document.getElementById('weekTotal').textContent=previous?'11h 28m':'12h 48m';document.getElementById('weekComparison').innerHTML=previous?'<span>↘</span>−1h 20m vs this week':'<span>↗</span>+1h 20m vs last week';}
+ else{renderBars('monthChart',previous?monthPrevious:monthCurrent);document.getElementById('monthStatus').textContent=previous?'Completed':'In progress';document.getElementById('monthStatus').classList.toggle('done',previous);document.getElementById('monthRange').textContent=previous?'Sep 1 – Sep 30':'Oct 1 – Oct 31';document.getElementById('monthTotal').textContent=previous?'49h 05m':'52h 14m';document.getElementById('monthComparison').innerHTML=previous?'<span>↘</span>−3h 15m vs this month':'<span>↗</span>+3h 15m vs last month';}
+}));
+</script>
+</body>
+</html>

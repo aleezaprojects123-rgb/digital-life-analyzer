@@ -8,7 +8,7 @@ Everything here runs on a server or in a web browser, never on the user's PC. It
 |---|---|---|
 | [backend/](backend/README.md) | Register, log in, log out and password reset (F9) with Argon2 password hashes and signed tokens, `/me`, a mock mailer (reset link printed in the server log), summary upload and read (`PUT`/`GET /summaries/{date}`, checked against Contract 2, AES-256-GCM at rest), health routes, database migrations, tests | Reports, score, forecast, Stripe |
 | Database | Tables `users`, `daily_summaries`, `revoked_tokens` and `password_reset_tokens` (migrations `0001` and `0002`) | Goals, payments (each gets its own migration when built) |
-| [frontend/](frontend/README.md) | React page with a status panel that asks the backend if it and its database are up | Register and login pages, reports, charts |
+| [frontend/](frontend/README.md) | React **local dashboard**: Today, Weekly and Monthly screens built from the agent's own reports on this PC (development bridge only), light and dark theme | Login and register pages, the cloud reports (they need the summary sync), categories, score, forecast |
 | [mock/](mock/README.md) | A made-up day in Contract 2 format, checked by tests | More days (needed for the weekly report and the forecast) |
 
 ## Folder layout
@@ -118,24 +118,22 @@ npm install
 
 ## Every time: run the dashboard in your browser
 
-Two terminals.
+The dashboard shows what the **Digital Life Analyzer app on this PC** has recorded. It needs that app running (tray icon, consent given, tracking on), and it does **not** need the backend. The full steps, and what you should see, are in [frontend/README.md](frontend/README.md). In short, in `cloud\frontend`:
 
-**Terminal 1, the backend** (in `cloud\backend`):
+```
+npm run dev
+```
+
+Open **http://localhost:5173**.
+
+The backend (register, login, summaries) is separate. To try register and login by hand, start it:
 
 ```
 $py = "$env:USERPROFILE\.venvs\dla-backend\Scripts\python.exe"
 & $py -m uvicorn app.main:app --reload --port 8000
 ```
 
-**Terminal 2, the dashboard** (in `cloud\frontend`):
-
-```
-npm run dev
-```
-
-Open **http://localhost:5173**. You should see "Digital Life Analyzer", a "Your reports" card, and a "System status" card with **Backend API: Online** and **Database: Online**. Stop either terminal with `Ctrl+C`.
-
-To try register and login before the dashboard has those pages, open **http://127.0.0.1:8000/docs**: open `POST /api/v1/auth/register`, click **Try it out**, type an email and a password **in the browser**, and press **Execute**. See [backend/README.md](backend/README.md).
+then open **http://127.0.0.1:8000/docs**: open `POST /api/v1/auth/register`, click **Try it out**, type an email and a password **in the browser**, and press **Execute**. See [backend/README.md](backend/README.md). Stop either with `Ctrl+C`.
 
 ## A note about OneDrive
 
