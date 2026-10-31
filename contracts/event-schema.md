@@ -1,45 +1,54 @@
 # Contract 1: Event schema (version 1)
 
-Status: **draft for Fatima's review.** This is a shared file: any change needs approval from both Aleeza and Fatima.
+Status: **revised for the extension-only architecture; needs Fatima's approval** (this is a shared file: any change needs approval from both Aleeza and Fatima).
 The machine-readable version is [event.schema.json](event.schema.json). If the two ever disagree, fix them together.
-The rules below match the sections "Rules from the PRD (fixed)" and "Team decisions" in [CLAUDE.md](../CLAUDE.md).
+
+**What changed in this revision.** The Windows desktop tracker was removed: the Chrome/Edge extension is now the **only** activity collector. So this contract no longer has
+desktop (`agent`) events, `app`, `idle` or `presence`, and it now lists the fields the browser event really has (`platform`, `activity_type`, `content_count`, `session_id`).
+`switched_count` and `browser_idle` were tried and removed; they are not part of the event. The sections "Rules from the PRD" and "Team decisions" below follow
+[CLAUDE.md](../CLAUDE.md) except where they are marked as removed.
 
 ## Purpose
 
-The browser extension (F1) and the Windows agent (F2, F3) both record events. All events share this one schema, so they merge into one timeline in time order (F5).
+The browser extension (F1) records events. Every event is one **browser activity period**: the time between the moment a page comes to the front and the moment the next page does
+(or the browser loses focus). All events share this one schema.
 
 Events are stored **only on the user's PC**, in SQLite, for 30 days (F4). They never leave the PC. Only encrypted summaries are synced to the cloud; that is Contract 2 and is not covered here.
 
+The flow is: **Chrome extension -> browser activity events -> local processing and storage -> SQLite -> analytics / UI.**
+
 ## Fields
 
-Every event contains **all** of these fields. A value that does not apply is `null`, so nobody has to guess whether a field is missing.
+Every event contains **all** of the required fields. A value that does not apply is `null`, so nobody has to guess whether a field is missing.
 
 | Name | Type | Required | Meaning |
 |---|---|---|---|
 | `schema_version` | string, always `"1"` | required | Version of this schema. |
 | `id` | string | required | Unique id of the event (a UUID is recommended). |
-| `start` | string, UTC time | required | When the event began. |
-| `end` | string, UTC time | required | When the event ended. Not earlier than `start`. |
+| `start` | string, UTC time | required | When the period began. |
+| `end` | string, UTC time | required | When the period ended. Not earlier than `start`. |
 | `duration_seconds` | integer | required | Equals `end` minus `start`, in whole seconds. |
-| `source` | `"extension"` or `"agent"` | required | Who recorded it: the browser extension or the Windows agent. |
-| `app` | string or `null` | required | Process name, for agent events (for example `code.exe`). `null` for extension events and for idle events. |
-| `domain` | string or `null` | required | Website domain only (for example `youtube.com`), for extension events. `null` otherwise. Reports use `domain`. |
-| `url` | string or `null` | required | **Sanitized** URL (scheme, domain and path only), for extension events. `null` otherwise. Stored only on the PC, never synced. See "URL" below. |
-| `title` | string or `null` | required | Window or tab title, only when permitted. `null` or masked otherwise. |
-| `idle` | boolean | required | `true` exactly when `presence` is `"away"`. Set by the agent only. |
-| `presence` | `"active"`, `"passive"`, `"uncertain"`, `"away"` or `null` | required | Is the user there? The extension writes `null`; the Windows agent fills it when it merges events into the timeline. See "Presence" below. |
+| `source` | string, always `"extension"` | required | Who recorded it. The extension is the only collector. |
+| `platform` | `youtube`, `instagram`, `tiktok`, `reddit`, `facebook`, `whatsapp`, `spotify`, `netflix`, `github`, `google` or `unknown` | required | The service the page belongs to. `unknown` for every other website. |
+| `domain` | string | required | Website domain only (for example `youtube.com`). Reports use `domain`. |
+| `url` | string | required | **Sanitized** URL (scheme, domain and path only). Stored only on the PC, never synced. See "URL" below. |
+| `title` | string or `null` | required | Tab title, only when permitted. `null` or masked otherwise. |
+| `activity_type` | `webpage`, `search`, `video`, `short_video`, `reel`, `music`, `post`, `article`, `document`, `social_feed`, `messaging`, `meeting`, `shopping`, `game` or `unknown` | required | What kind of page the period was spent on. |
+| `content_count` | integer, 0 or 1 | required | `1` when the period is where the user moved to a new content item that can be told apart reliably (a Reel, a video, a Short, a post opened on its own address), else `0`. Never invented for feeds, home pages or search pages. |
+| `session_id` | string or `null` | required | The recording session. The extension writes `null`; the local program stamps the id of the current session when it accepts the event. |
 | `category` | `Study`, `Work`, `Entertainment`, `Social Media`, `Other`, or `null` | required | Label from the on-device AI (F6). `null` until labelled. |
 | `confidence` | number from 0 to 1, or `null` | required | How sure the labelling was. `null` until labelled. |
 | `uncertain` | boolean | required | `true` when low confidence made the label fall back to `Other`. `false` otherwise. |
 | `label_source` | `"model"`, `"rules"` or `null` | required | Who produced the label. `null` until labelled. |
+| `media_title`, `artist`, `album`, `media_type`, `playback`, `media_app` | string or `null` | optional | Added by the local program when the Windows media controls match the page that was playing (for example the song title). Absent when nothing matched. |
 
-No other fields are allowed. There is no field for page text, message bodies, a screenshot, keystrokes or typed text.
+No other fields are allowed. There is no field for page text, message bodies, a screenshot, keystrokes, typed text, the name of a desktop program, or whether the user was idle.
 
 ## Examples
 
 All examples use made-up test data.
 
-**1. Extension event** (browser, a YouTube Shorts page, 2 min 30 s; the video id in the path is masked with `*`). This is how the extension writes it, so `presence` is `null`; the agent fills it in when it merges the timeline:
+**1. A YouTube Short** (2 min 30 s; the video id in the path is masked with `*`; it is the one new item, so `content_count` is 1):
 
 ```json
 {
@@ -49,12 +58,13 @@ All examples use made-up test data.
   "end": "2026-10-27T05:17:30Z",
   "duration_seconds": 150,
   "source": "extension",
-  "app": null,
+  "platform": "youtube",
   "domain": "youtube.com",
   "url": "https://www.youtube.com/shorts/*",
   "title": "Funny cats compilation",
-  "idle": false,
-  "presence": null,
+  "activity_type": "short_video",
+  "content_count": 1,
+  "session_id": null,
   "category": null,
   "confidence": null,
   "uncertain": false,
@@ -62,7 +72,7 @@ All examples use made-up test data.
 }
 ```
 
-**2. Agent event** (desktop app in the foreground, 7 min 30 s, recent input, so presence is `active`):
+**2. The Instagram home feed** (time only: nothing is counted, because individual feed posts cannot be told apart):
 
 ```json
 {
@@ -71,13 +81,14 @@ All examples use made-up test data.
   "start": "2026-10-27T05:17:30Z",
   "end": "2026-10-27T05:25:00Z",
   "duration_seconds": 450,
-  "source": "agent",
-  "app": "code.exe",
-  "domain": null,
-  "url": null,
-  "title": "main.cs - dla-agent",
-  "idle": false,
-  "presence": "active",
+  "source": "extension",
+  "platform": "instagram",
+  "domain": "instagram.com",
+  "url": "https://www.instagram.com",
+  "title": "Instagram",
+  "activity_type": "social_feed",
+  "content_count": 0,
+  "session_id": "b0c1d2e3f4a5968778695a4b3c2d1e0f",
   "category": null,
   "confidence": null,
   "uncertain": false,
@@ -85,7 +96,7 @@ All examples use made-up test data.
 }
 ```
 
-**3. Idle event** (user away for 6 minutes, recorded by the agent; `idle` is `true` because presence is `away`):
+**3. Any other website** (generic time, no content count):
 
 ```json
 {
@@ -94,13 +105,14 @@ All examples use made-up test data.
   "start": "2026-10-27T05:25:00Z",
   "end": "2026-10-27T05:31:00Z",
   "duration_seconds": 360,
-  "source": "agent",
-  "app": null,
-  "domain": null,
-  "url": null,
-  "title": null,
-  "idle": true,
-  "presence": "away",
+  "source": "extension",
+  "platform": "unknown",
+  "domain": "wikipedia.org",
+  "url": "https://www.wikipedia.org",
+  "title": "Wikipedia",
+  "activity_type": "webpage",
+  "content_count": 0,
+  "session_id": "b0c1d2e3f4a5968778695a4b3c2d1e0f",
   "category": null,
   "confidence": null,
   "uncertain": false,
@@ -108,7 +120,7 @@ All examples use made-up test data.
 }
 ```
 
-**4. Labelled event with low confidence** (the model was unsure, so the label fell back to `Other` and is marked uncertain):
+**4. A labelled event with low confidence** (the model was unsure, so the label fell back to `Other` and is marked uncertain):
 
 ```json
 {
@@ -117,67 +129,20 @@ All examples use made-up test data.
   "start": "2026-10-27T05:31:00Z",
   "end": "2026-10-27T05:33:00Z",
   "duration_seconds": 120,
-  "source": "agent",
-  "app": "notepad.exe",
-  "domain": null,
-  "url": null,
+  "source": "extension",
+  "platform": "unknown",
+  "domain": "example.com",
+  "url": "https://example.com/docs",
   "title": "Untitled",
-  "idle": false,
-  "presence": "active",
+  "activity_type": "webpage",
+  "content_count": 0,
+  "session_id": "b0c1d2e3f4a5968778695a4b3c2d1e0f",
   "category": "Other",
   "confidence": 0.41,
   "uncertain": true,
   "label_source": "model"
 }
 ```
-
-**5. Passive event** (a lecture video playing in the foreground for 30 minutes, no keyboard or mouse input, so presence is `passive` and the time still counts as active):
-
-```json
-{
-  "schema_version": "1",
-  "id": "5b9d2e84-7a1c-4f36-8d05-c3e1a7b49f62",
-  "start": "2026-10-27T05:33:00Z",
-  "end": "2026-10-27T06:03:00Z",
-  "duration_seconds": 1800,
-  "source": "agent",
-  "app": "vlc.exe",
-  "domain": null,
-  "url": null,
-  "title": "Lecture 7 - Thermodynamics.mp4",
-  "idle": false,
-  "presence": "passive",
-  "category": "Study",
-  "confidence": 0.93,
-  "uncertain": false,
-  "label_source": "model"
-}
-```
-
-**6. Uncertain-presence event** (a PDF reader in the foreground for 8 minutes, no input, no media, so the user may be reading: presence is `uncertain`):
-
-```json
-{
-  "schema_version": "1",
-  "id": "a4c7f1e0-3d82-4b59-9e16-0f5b8d2c6a73",
-  "start": "2026-10-27T06:03:00Z",
-  "end": "2026-10-27T06:11:00Z",
-  "duration_seconds": 480,
-  "source": "agent",
-  "app": "acrobat.exe",
-  "domain": null,
-  "url": null,
-  "title": "Chapter 4 - Thermodynamics.pdf",
-  "idle": false,
-  "presence": "uncertain",
-  "category": "Study",
-  "confidence": 0.86,
-  "uncertain": false,
-  "label_source": "model"
-}
-```
-
-Presence and the label are separate. In example 5 the category is `Study` and presence is `passive`. In example 6 the presence is `uncertain` (is the user there?) while the label field `uncertain` is `false` (the model was sure about `Study`).
 
 ## Rules
 
@@ -189,7 +154,7 @@ Presence and the label are separate. In example 5 the category is `Study` and pr
 - Page text, message bodies, screenshots, keystrokes and typed text are never stored.
 
 ### URL
-- `url` is a **sanitized URL for extension events only**: scheme, domain and path. For all other events it is `null`.
+- `url` is a **sanitized URL**: scheme, domain and path.
 - The **query string and the fragment are always removed.**
 - **Long random-looking path segments** and **known sensitive patterns** (reset or login tokens, session ids, email or account ids) are **replaced with `*`**. For example `https://www.youtube.com/shorts/Ab3dE9xQ2zK` becomes `https://www.youtube.com/shorts/*`.
 - The cleaning happens **inside the extension**, before anything is sent on.
@@ -197,59 +162,36 @@ Presence and the label are separate. In example 5 the category is `Study` and pr
 - The host in `url` belongs to `domain` (`www.youtube.com` belongs to `youtube.com`). The extension guarantees this.
 - The JSON schema adds a last-line safety net: it rejects a query string, a fragment, a port, user details, a path segment of 32 or more id-like characters, and an email address in the path. It cannot do the masking itself.
 
+### Periods and counts
+- A period starts when a page comes to the front and ends when a different page does, or when the browser loses focus. A new period in another tab, or on another address, is a new event.
+- Time is measured for every period. A count (`content_count`) is given only where the item can be told apart reliably: Instagram Reels and posts opened on their own address, YouTube videos and Shorts, TikTok videos opened on their own address, and what Facebook reliably shows. Feeds, home pages and search pages are time only.
+- Periods can overlap only if two windows report at once. Time totals use the union of the periods, so an overlap is counted once.
+
 ### Rules from the PRD (fixed)
-1. Extension and agent events share one schema (`contracts/event-schema.md`) and merge in time order, with overlap rules (F5).
+1. All events come from the browser extension and share this one schema (`contracts/event-schema.md`) (F1). *(Changed: the desktop agent was removed, so there is nothing to merge them with.)*
 2. Events are stored only on the PC in SQLite, auto-deleted after 30 days, and survive restarts (F4).
-3. Idle time is never counted as active (F3).
+3. *(Removed: idle time is no longer measured. A period counts as the time the page was in front.)*
 4. Every label has a category (Study, Work, Entertainment, Social Media, Other) and a confidence. Low confidence falls back to uncertain `Other`. No screenshots or OCR (F6).
 5. No screenshots, keystrokes or typed text. Page text is read only on the device, never uploaded and not stored (only the label is kept).
-6. Hidden sites and apps are skipped before anything is read (F7).
+6. Hidden sites are skipped before anything is read (F7).
 7. Only encrypted summaries leave the PC, never raw events or page text (F8).
 
 ### Team decisions (agreed 26 Oct 2026, not in the PRD)
 1. **URL:** the extension stores a sanitized URL: scheme, domain and path only. Query string and fragment are always removed. Long random-looking path segments and known sensitive patterns (reset or login tokens, session ids, email or account ids) are masked with `*`. Cleaning happens inside the extension before anything is sent. The URL stays on the PC and is never synced. `domain` is kept too, and reports use `domain`.
-2. **Idle and presence:** decided only by the Windows agent from system-wide inactivity plus passive-activity signals (foreground media or audio, calls) and context (reading apps), with states active, passive, uncertain and away. The extension reports only browser-specific signals (active tab, tab changes, tab audible, video playing) and never decides presence.
-3. **Overlap:** an extension event counts only while the browser (`chrome.exe` or `msedge.exe`) is the foreground app. When the extension and the agent both cover the same moment, count it once and keep the extension event. If the extension has no event, keep the agent event with `domain` null. Two agent events never overlap.
+2. *(Removed: idle and presence were decided by the Windows agent, which no longer exists.)*
+3. *(Removed: overlap with desktop events. There are no desktop events.)*
 4. **Other:** `Other` with `uncertain: true` is a last resort, used only when the activity cannot reasonably be identified from the available context.
-5. **Categorization:** use all available context (app, domain, URL, permitted title, on-device page or media text, time of day) instead of basic guesses. If the model is off, rules fill the category with `label_source: "rules"`.
-6. **Hidden apps and sites:** no event is recorded at all.
+5. **Categorization:** use the available context (domain, URL, permitted title, time of day) instead of basic guesses. If the model is off, rules fill the category with `label_source: "rules"`.
+6. **Hidden sites:** no event is recorded at all.
 7. **Private/incognito windows:** not recorded.
 8. **Privacy:** never read message bodies, inboxes, DMs, input fields or typed text. Mask sensitive titles.
 
-### Presence (new, needs Fatima's approval)
-- `presence` is `"active"`, `"passive"`, `"uncertain"`, `"away"` or `null`.
-- **Only the agent decides presence.** The extension writes `null`. The Windows agent fills `presence` when it merges events into the timeline.
-- **`idle` is `true` exactly when `presence` is `"away"`.** No other presence value can have `idle: true`.
-- How presence counts:
-  - **active** and **passive** time count as active.
-  - **uncertain** time counts as active with **lower weight** and is **never productive**.
-  - **away** time is not active.
-- Presence is separate from the AI category. Watching entertainment is still active (presence), and its category is `Entertainment`.
-- The signals, the waits and their starting values are in the Decisions section below. The numbers are not tested yet.
-
 ### How these rules show up in an event
-- **Idle event:** `idle: true`, `presence: "away"`, `app: null`, `domain: null`, `url: null`. It is never counted as active, and no active event is counted during idle time. Only the agent creates idle events; an extension event always has `idle: false`.
-- **Timeline merge:** events are ordered by `start`. Overlaps follow team decision 3: an extension event counts only while the browser is in the foreground; when the extension and the agent cover the same moment it is counted once and the extension event is kept; if the extension has no event, the agent event is kept with `domain: null`; two agent events never overlap.
 - **Labels:** `category`, `confidence` and `label_source` are added later by the on-device AI, so they are `null` until then. If `confidence` is below the threshold, `category` is `Other` and `uncertain` is `true`. If the model is off, rules fill `category` and `label_source` is `"rules"`.
-- **Hidden apps and sites, private windows:** they produce no event at all, so there is nothing in the data to filter out later.
+- **Hidden sites, private windows:** they produce no event at all, so there is nothing in the data to filter out later.
 - **Retention:** events older than 30 days are deleted automatically.
 
 ## Decisions
-
-### Idle threshold and presence (decided by the team, numbers need testing)
-- Do not rely only on a keyboard/mouse timer. The Windows agent decides presence from several signals: keyboard/mouse inactivity, computer lock/sleep/display off/sign-out, sound or media playing in the FOREGROUND app or active tab, and calls where detectable (microphone or camera in use).
-- A signal counts only if it matches what the user is looking at. An open app alone never counts as activity, and music playing in a background app does not count.
-- Presence states:
-  - **active**: recent input.
-  - **passive**: no input, but foreground media or a call is running.
-  - **uncertain**: no input and no media, but a reader, slide or document app is in the foreground, so reading is possible.
-  - **away**: locked, asleep, display off, or no input and no signals after the waits below.
-- Starting values, **NOT yet tested**: 3 minutes of input inactivity; 10 minutes extra wait for reading apps; about 90 minutes with no input at all as a cap for passive activity, after which the time becomes uncertain, then away.
-- If the system cannot tell whether the user is present, the time is marked uncertain. It is never guessed as active and never counted as productive. It counts less in the score.
-- Presence is separate from AI categories. Watching entertainment is still active (presence), and its category is Entertainment.
-- No screenshots, keystrokes, typed text or private data are collected. Sound detection checks only whether and which app is making sound, never the audio itself. Input detection sees only timing, never which keys.
-- Implementation notes (for later days): `GetLastInputInfo` for input timing, session lock and power events, Windows audio sessions and system media controls for playback, the Windows microphone/camera usage record for calls; in the extension, the tab "audible" flag and whether a video is playing.
-- Status: **needs Fatima's approval**, because it adds a `presence` field to the event format (commit 2) and extends the PRD's simple "inactivity past a set threshold" rule.
 
 ### AI model shortlist (candidates for Day 7 testing, final model NOT selected)
 - The AI categorizes activity as Study, Work, Entertainment, Social Media or Other, runs locally in the C# agent using ONNX Runtime, works offline, and uses rule-based classification if the model is unavailable. Low confidence gives Other with `uncertain: true`.

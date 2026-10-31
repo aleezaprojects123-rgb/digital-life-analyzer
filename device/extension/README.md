@@ -6,14 +6,14 @@ The extension logs which website is in front, **but only while the Windows agent
 
 What it does:
 
-1. Asks the agent one question, `GET http://127.0.0.1:49721/status` (with the header `X-DLA-Extension-Id: <its own ID>`, because the browser sends no Origin for this request), and records **only if both `consented` and `trackingEnabled` are `true`**. If the agent is not running, does not answer, or answers anything unexpected, that counts as **no consent**. The answer is cached for 10 seconds (never more than 15) and re-checked when tabs change. No timers or alarms.
+1. Asks the agent one question, `GET http://127.0.0.1:49721/status` (with the header `X-DLA-Extension-Id: <its own ID>`, because the browser sends no Origin for this request), and records **only if both `consented` and `trackingEnabled` are `true`**. If the agent is not running, does not answer, or answers anything unexpected, that counts as **no consent**. The answer is cached for 10 seconds (never more than 15) and re-checked when tabs change. No alarms. The only timers are a 3 second one-shot after the browser loses focus, and a 20 second keep-alive that runs only while a period is being recorded (see "Why the keep-alive" below).
 2. While allowed, it follows the active tab of the focused browser window (tab switches, page changes including single-page-app navigation, and the browser losing focus, which ends the event).
-3. Each period becomes **one Contract 1 event** (`contracts/event-schema.md`): all 16 fields, `source: "extension"`, `app: null`, `domain` from `getDomain`, `url` from `sanitizeUrl`, `idle: false`, `presence: null`, no label yet, UTC times in whole seconds, `duration_seconds = end - start`, a random unique `id`, `schema_version: "1"`.
+3. Each period becomes **one Contract 1 event** (`contracts/event-schema.md`): all the fields of `contracts/event-schema.md`, `source: "extension"`, `domain` from `getDomain`, `url` from `sanitizeUrl`, `platform`, `activity_type`, `content_count`, no label yet, UTC times in whole seconds, `duration_seconds = end - start`, a random unique `id`, `schema_version: "1"`.
 4. Events are kept **in memory only**. The popup shows "N events this session" while recording is allowed, and otherwise says "Nothing is being recorded."
 
-What it never does: read page content (there are **no content scripts**), record private windows (`"incognito": "not_allowed"`), record internal pages (`chrome://`, `edge://`, `about:`, `file:`, extension pages, the new-tab page), record hidden sites (the `isHiddenSite` hook; no setting exists yet, so it always says "not hidden"), use storage, alarms or timers, or make any network request other than `/status`.
+What it never does: read page content (there are **no content scripts**), record private windows (`"incognito": "not_allowed"`), record internal pages (`chrome://`, `edge://`, `about:`, `file:`, extension pages, the new-tab page), record hidden sites (the `isHiddenSite` hook; no setting exists yet, so it always says "not hidden"), use storage or alarms, or make any network request other than `/status`. (The one recurring timer is the keep-alive, which makes a harmless `chrome.runtime.getPlatformInfo()` call and reads nothing.)
 
-**Not done yet** (do not assume any of these work): sending events to the agent (Day 3), SQLite, app tracking, idle or presence (the agent decides those), hidden-site settings, store publishing.
+**Not done yet** (do not assume any of these work): hidden-site settings, store publishing.
 
 ### Titles
 
@@ -23,6 +23,12 @@ The title is kept (cut to 120 characters, control characters removed) **except**
 - for webmail and messaging sites listed in `sensitive-domains.js`.
 
 That list is a **first version for the team to review**, not a finished list.
+
+### What the popup count means
+
+"N events this session" is the number of **finished normal-page tracking periods** held in memory (`events.length`). It is not the number of tab switches or pages visited, and it does not include the page you are on now. A period ends when you leave the page (another tab, a new address in the tab, browser focus lost, a private window, an internal page). So leaving a normal page for a private window or `edge://settings` raises the count by one, although the private or internal page itself records nothing. The count shows no addresses, so it is **not** proof that nothing private was recorded; the automatic tests check that. It covers all normal windows of the browser profile and resets when the browser stops the idle service worker.
+
+**Opening or closing the popup does not change the count.** Opening the popup takes the keyboard focus from the browser window, which the browser reports as "no window in front"; before the fix that ended the current page's period (and closing it started a new one), so every click added one. Now the popup connects to the background worker when it opens (it sends nothing over that connection). While it is open, a focus loss is ignored, and a period that was ended by the focus loss just before the popup connected is taken back with its original start time. Real changes (another page or tab, leaving the browser, a private window, an internal page) still end the period. One known gap: if you open the popup and then switch to another program without closing it first, the browser may not report a second focus loss, so that period ends at your next browser action instead of at the switch. This fix is tested with a fake browser only; it needs the manual check in `DAY2-TEST-CHECKLIST.md`.
 
 ### What happens to a period when recording stops
 
@@ -102,3 +108,57 @@ See the manual test steps in the Day 2 report, or `device/DAY2-TEST-CHECKLIST.md
 | `popup.html`, `popup.js` | The popup: "N events this session" only while recording is allowed. |
 | `PERMISSIONS.md` | Permission justifications for store review. |
 | `test/*.test.js`, `test/schema-check.js` | Automatic tests and a small schema checker. |
+
+## Browser events reach events.jsonl (manual Chrome check, version 0.0.3)
+
+What was wrong: the extension's sender got stuck on its first (empty) run at browser start-up, so no event was ever POSTed. Fixed in 0.0.3.
+Also: leaving for another app now sends the finished page after 3 seconds, and an event the agent permanently rejects (400) no longer blocks the ones behind it.
+
+Steps (no automation is run for you; do these yourself):
+1. Close the old agent (tray icon > Quit). Build and start the agent again: `dotnet run --project device/agent/Dla.Agent`.
+2. Open `chrome://extensions`, press Reload on Digital Life Analyzer. It must say version 0.0.3 and ID facfnlbfamjpolgenifllpjedenekdlb.
+3. Keep the service worker DevTools CLOSED (an open DevTools hides the idle-stop problem).
+4. Visit YouTube, then Google, then GitHub, about 20 seconds each (not more than about 25 seconds without changing tab), then switch to VS Code for 10 seconds.
+5. Look for extension lines:
+   `findstr /C:"\"source\":\"extension\"" devicegent\data\events.jsonl`
+   You should see one line per page, next to the `"source": "agent"` lines, in the same file.
+6. If nothing appears, the agent log shows `Browser event refused: HTTP 400/500 <reason>` for a rejected event, and the first log lines show the exact events file path.
+
+Known limit: a page that is still OPEN when Chrome stops the idle service worker (about 30 seconds with no tab changes) is lost. Finished pages are never lost.
+
+## Media metadata in events.jsonl (manual Chrome check, version 0.0.4)
+
+The agent reads what Windows says is playing (System Media Transport Controls: title, artist, album, play/pause, app) and
+attaches it to the browser period it belongs to. It never writes a separate media event, so time is not counted twice.
+If the media changes inside one page (next song, next Short), the period is split into consecutive events.
+The new fields (`media_title`, `artist`, `album`, `media_type`, `playback`, `media_app`) are on branch `contract/media-fields`,
+which still needs Fatima's approval. Events without media are written exactly as before.
+
+1. Quit the agent from the tray, run the rebuilt agent, and reload the extension (0.0.4).
+2. Test A: open "Heartless" by Kanye West on YouTube, play 30 s, switch tab. The line has `media_title`, `artist`, `playback: "playing"`.
+3. Test B: a normal YouTube video for 30 s.
+4. Test C: open YouTube Shorts and swipe 3 Shorts in the same tab. Expect one event per Short (urls stay `/shorts/*`, ids never stored).
+5. Test D: Spotify desktop is not attached to events yet. Check that Windows sees it with a read-only query of the media sessions.
+6. Check `device/agent/data/events.jsonl`. YouTube may give the channel as `artist` and the full video title as `media_title`.
+
+### Checking the file is correct UTF-8 (do not trust `findstr` or the console)
+
+`events.jsonl` is UTF-8 without a BOM. The Windows console (code page 437/850) and `findstr` show Japanese text and
+`Señorita` as garbage such as `Se├▒orita` even though the file is fine. Check it with a UTF-8 reader instead:
+
+    py -c "import json;[print(json.loads(l).get('media_title')) for l in open('device/agent/data/events.jsonl',encoding='utf-8') if 'media_title' in l]"
+
+or open the file in VS Code (it shows "UTF-8" in the status bar). In PowerShell use `Get-Content -Encoding utf8 ... | Select-String media_title`.
+
+### When a video gets no media fields
+
+`agent.log` now says why, with a reason code only and never a title: `Media for browser event: browser_media_but_title_did_not_match`
+means Windows had a playing browser session but its title was not the tab's title (for example a YouTube advert, which replaces the
+session's title; or a session that still shows the previous video). `no_browser_media_in_period` means Windows published nothing for the browser then.
+
+### Why the keep-alive
+
+Chrome stops an idle extension service worker after about 30 seconds without extension events. A video that just plays creates no tab events, so
+without a keep-alive the worker was stopped mid-video, the open period (memory only) was lost, and no event was written for the watched time. While
+recording is allowed and a period is open, `keep-alive.js` makes one `chrome.runtime.getPlatformInfo()` call every 20 seconds (it returns the operating
+system name; it reads no page and sends nothing) and stops by itself when recording stops or no period is open. No storage, no ids, no permission.

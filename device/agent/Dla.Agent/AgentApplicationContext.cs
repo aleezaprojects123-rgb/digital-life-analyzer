@@ -3,12 +3,9 @@ using System.Windows.Forms;
 namespace Dla.Agent;
 
 /// <summary>
-/// The future tray-only lifecycle: a WinForms ApplicationContext has no window, so the program lives in the
-/// system tray until the user chooses Quit.
-///
-/// INTENTIONALLY NOT USED YET. Today's Program never calls Application.Run. Later, after the user has
-/// accepted on the onboarding screen and AgentHost.TryStart() returned true, the program will run
-/// Application.Run(new AgentApplicationContext(host)).
+/// The tray-only lifecycle: a WinForms ApplicationContext has no window, so the program lives in the system tray
+/// until the user chooses Quit. Program runs it with Application.Run only after the user has consented and
+/// AgentHost.TryStart() returned true. Disposing it stops the host, which removes the tray icon.
 /// </summary>
 public sealed class AgentApplicationContext : ApplicationContext
 {

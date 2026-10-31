@@ -310,8 +310,8 @@ public class SingleInstanceTests
     }
 
     [Fact]
-    public void The_agent_guard_has_a_fixed_per_session_name()
+    public void The_agent_guard_name_is_per_session_and_per_user()
     {
-        Assert.Equal(@"Local\DigitalLifeAnalyzer.Agent", SingleInstance.AgentName);
+        Assert.StartsWith(@"Local\DigitalLifeAnalyzer.Agent", SingleInstance.AgentName);
     }
 }

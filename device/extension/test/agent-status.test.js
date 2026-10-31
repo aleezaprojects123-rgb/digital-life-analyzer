@@ -2,7 +2,16 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
-import { createStatusClient, parseStatus, STATUS_URL, CACHE_MS, ID_HEADER } from "../agent-status.js";
+import {
+  createStatusClient,
+  parseStatus,
+  STATUS_URL,
+  EVENTS_URL,
+  CACHE_MS,
+  ID_HEADER,
+  sendBrowserEvent,
+  createEventSender,
+} from "../agent-status.js";
 
 const json = (body, ok = true) => async () => ({ ok, json: async () => body });
 const REC = { recording: true, noConsent: false };
@@ -79,6 +88,75 @@ test("two questions at the same moment make one request", async () => {
   assert.equal(calls, 1);
 });
 
+// ---- event sending & queueing --------------------------------------------------------------------------------------
+
+test("sendBrowserEvent posts to EVENTS_URL with POST and extension ID header", async () => {
+  assert.equal(EVENTS_URL, "http://127.0.0.1:49721/events");
+  let seen;
+  const sample = { id: "evt-1", schema_version: "1", source: "extension" };
+  const ok = await sendBrowserEvent(sample, {
+    extensionId: "abcdefghijklmnopabcdefghijklmnop",
+    fetchFn: async (url, init) => {
+      seen = { url, init };
+      return { ok: true, json: async () => ({ ok: true }) };
+    },
+  });
+  assert.equal(ok, true);
+  assert.equal(seen.url, "http://127.0.0.1:49721/events");
+  assert.equal(seen.init.method, "POST");
+  assert.equal(seen.init.headers["Content-Type"], "application/json");
+  assert.equal(seen.init.headers["X-DLA-Extension-Id"], "abcdefghijklmnopabcdefghijklmnop");
+  assert.equal(seen.init.body, JSON.stringify(sample));
+});
+
+test("sendBrowserEvent returns false and never throws on fetch error", async () => {
+  const ok = await sendBrowserEvent({ id: "evt-1" }, {
+    fetchFn: async () => { throw new TypeError("Network error"); },
+  });
+  assert.equal(ok, false);
+});
+
+test("createEventSender queues events and drains them when recording", async () => {
+  const sent = [];
+  const sender = createEventSender({
+    getStatus: async () => ({ recording: true, noConsent: false }),
+    fetchFn: async (url, init) => {
+      sent.push(JSON.parse(init.body));
+      return { ok: true };
+    },
+  });
+
+  sender.send({ id: "1", domain: "a.example" });
+  sender.send({ id: "2", domain: "b.example" });
+  await sender.drain();
+
+  assert.equal(sent.length, 2);
+  assert.equal(sender.queueLength, 0);
+});
+
+test("createEventSender holds queue when offline and clears when noConsent is true", async () => {
+  let recording = false;
+  let noConsent = false;
+  const sent = [];
+  const sender = createEventSender({
+    getStatus: async () => ({ recording, noConsent }),
+    fetchFn: async (url, init) => {
+      sent.push(JSON.parse(init.body));
+      return { ok: true };
+    },
+  });
+
+  sender.send({ id: "1" });
+  assert.equal(sender.queueLength, 1);
+  assert.equal(sent.length, 0);
+
+  // noConsent clears the queue
+  noConsent = true;
+  await sender.drain();
+  assert.equal(sender.queueLength, 0);
+  assert.equal(sent.length, 0);
+});
+
 // ---- manifest ------------------------------------------------------------------------------------------------------
 
 const manifest = JSON.parse(readFileSync(new URL("../manifest.json", import.meta.url), "utf8"));
@@ -109,10 +187,73 @@ test("the extension code uses no content scripts, no page reading and no other n
   for (const [file, code] of sources) {
     const lines = code.split("\n").filter((l) => !l.trim().startsWith("//") && !l.trim().startsWith("*"));
     const body = lines.join("\n");
-    for (const banned of ["chrome.scripting", "executeScript", "chrome.storage", "localStorage", "indexedDB", "chrome.alarms", "setInterval", "XMLHttpRequest", "WebSocket", "sendBeacon", "chrome.history", "chrome.cookies", "document.cookie", "chrome.webRequest"])
+    for (const banned of ["chrome.scripting", "executeScript", "chrome.storage", "localStorage", "indexedDB", "chrome.alarms", ...(file === "keep-alive.js" ? [] : ["setInterval"]), "XMLHttpRequest", "WebSocket", "sendBeacon", "chrome.history", "chrome.cookies", "document.cookie", "chrome.webRequest"])
       assert.ok(!body.includes(banned), `${file} uses ${banned}`);
     if (file !== "agent-status.js") assert.ok(!/\bfetch\s*\(/.test(body), `${file} makes a network call`);
   }
   const background = sources.find(([f]) => f === "background.js")[1];
   assert.ok(!background.includes("setTimeout"));
+  assert.ok(!background.includes("setInterval"), "the only interval lives in keep-alive.js");
+  // the one allowed timer is the keep-alive: it makes the cheap getPlatformInfo call and nothing else
+  const keepAliveSource = sources.find(([f]) => f === "keep-alive.js")[1];
+  assert.ok(!/chrome\.(tabs|windows|storage|scripting)/.test(keepAliveSource), "keep-alive.js touches no tab data");
+  assert.ok(background.includes("chrome.runtime.getPlatformInfo()"));
+});
+
+// ---- the sender must keep working (regression tests for "no browser event ever reached the file") ----------------------
+
+const okReply = { ok: true, status: 200, json: async () => ({ ok: true }) };
+
+test("regression: an empty drain (as happens at browser start-up) must not block later sends", async () => {
+  const sent = [];
+  const sender = createEventSender({
+    getStatus: async () => REC,
+    fetchFn: async (u, init) => { sent.push(JSON.parse(init.body).id); return okReply; },
+  });
+  await sender.drain();                       // nothing queued: this used to leave the sender stuck for good
+  sender.send({ id: "1" });
+  await sender.drain();
+  sender.send({ id: "2" });
+  await sender.drain();
+  assert.deepEqual(sent, ["1", "2"]);
+  assert.equal(sender.queueLength, 0);
+});
+
+test("an event the agent rejects with 400 is dropped, and the events behind it are still sent", async () => {
+  const sent = [];
+  const sender = createEventSender({
+    getStatus: async () => REC,
+    fetchFn: async (u, init) => {
+      const id = JSON.parse(init.body).id;
+      sent.push(id);
+      return id === "bad" ? { ok: false, status: 400, json: async () => ({ error: "invalid_domain" }) } : okReply;
+    },
+  });
+  sender.send({ id: "bad" });
+  sender.send({ id: "good" });
+  await sender.drain();
+  assert.deepEqual(sent, ["bad", "good"]);
+  assert.equal(sender.queueLength, 0);
+});
+
+test("a temporary failure (agent busy, 403, 500, offline) keeps the event and sends it later, in order", async () => {
+  let mode = "down";
+  const sent = [];
+  const sender = createEventSender({
+    getStatus: async () => REC,
+    fetchFn: async (u, init) => {
+      if (mode === "down") throw new TypeError("Failed to fetch");
+      if (mode === "403") return { ok: false, status: 403, json: async () => ({}) };
+      if (mode === "500") return { ok: false, status: 500, json: async () => ({}) };
+      sent.push(JSON.parse(init.body).id);
+      return okReply;
+    },
+  });
+  sender.send({ id: "1" });
+  sender.send({ id: "2" });
+  for (const m of ["down", "403", "500"]) { mode = m; await sender.drain(); assert.equal(sender.queueLength, 2, m); }
+  mode = "up";
+  await sender.drain();
+  assert.deepEqual(sent, ["1", "2"]);
+  assert.equal(sender.queueLength, 0);
 });

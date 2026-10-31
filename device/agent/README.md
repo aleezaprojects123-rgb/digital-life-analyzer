@@ -22,7 +22,35 @@ The tray icon is created **only by `AgentHost`, and only after the consent gate 
 
 The pause state lives in memory only, so it is ON again after a restart. Pausing never changes consent.
 
-**Not done yet** (do not assume any of these work): tracking of any kind, any transfer of events from the extension, watching for consent being withdrawn while the agent runs (a deleted consent file takes effect at the next start), an `.exe` package or installer, starting with Windows.
+**Not done yet** (do not assume any of these work): tracking of any kind, any transfer of events from the extension, watching for consent being withdrawn while the agent runs (a deleted consent file takes effect at the next start), an `.exe` package or installer (start-with-Windows is wired, see "Starting automatically", but only for a program file named `Dla.Agent.exe`).
+
+## Starting automatically
+
+After the user accepts once, nobody runs `dotnet run` or any other command again:
+
+1. Windows signs the user in and starts `Dla.Agent.exe` from the ONE per-user entry `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\DigitalLifeAnalyzer` (it is also listed in Windows Settings > Apps > Startup, where it can be switched off).
+2. The single-instance guard is taken first. A second copy exits silently.
+3. Consent is checked. Valid consent: no window is shown. No consent: the consent window is shown, nothing else exists, and the start-up entry is removed.
+4. After consent only: the tray icon, the local link (a new recording session id), SQLite (`%LocalAppData%\DigitalLifeAnalyzer\dla.db`, 30-day cleanup, import of the older JSONL) start, and the start-up entry is written (once; repeating it changes nothing).
+5. The extension finds the agent on `127.0.0.1` by itself (it asks `/status` and sends events). The agent never starts a browser.
+
+If the agent itself crashes or is ended, nothing restarts it until the next sign-in: there is deliberately no second watchdog mechanism.
+
+## What the program collects
+
+**Nothing by itself.** The Chrome/Edge extension is the ONLY activity collector. The program only receives the extension's finished browser periods on `127.0.0.1`, checks them, stamps the recording session id, optionally adds the title/artist the Windows media controls show for a browser tab that was playing, and saves them to SQLite. There is no desktop tracker: no foreground-application tracking, no program names, no Python process, and no idle or presence measurement. Pausing from the tray, or withdrawing consent, makes the status link tell the extension to stop recording.
+
+## One icon
+
+The agent is built so that a Windows user sees **exactly one** tray icon while it runs:
+
+1. **One guard for the whole product.** The first thing `Main` does (`AgentStartup`, before any window, file, icon or listener) is take a named mutex, `Local\DigitalLifeAnalyzer.Agent.<your user SID>`. The name depends only on who is logged in and which Windows session: not on the data folder, the working directory, the build mode or any test setting. Two copies started by the same user, from anywhere, ask for the same name, so the second one gets "taken" and **exits silently**, having created no icon, no window, no listener and no file. Two different users, or two sessions, have different names and do not block each other.
+2. **The guard cannot be lost.** It is held in a static field for the life of the process (so the garbage collector can never release it) and is freed when the program ends. Windows frees the name even if the process is killed.
+3. **One icon per process.** The Windows icon is created only inside `Show()`, and only if no other tray in this process owns the process's single icon. A second request does nothing. `AgentHost` also never creates a second tray, and only after consent.
+4. **The icon is removed on every way out:** Quit, Windows logoff or shutdown (`SessionEnding`), an unhandled exception, normal application exit and process exit. They all call the same idempotent `Stop`.
+5. **One line in `agent.log`** (written only after consent) says `Agent started. Process id N. Single-instance guard acquired: yes.` so you can check later which process ran. A refused copy writes nothing.
+
+**What no code can prevent:** a **force-ended agent** (Task Manager, a crash that skips cleanup, a killed debugger) always leaves a **ghost icon** in the tray until the mouse passes over it, because Windows only notices the icon is dead when it tries to use it. Testers should always use **Quit** from the tray menu. To clear ghosts, hover over them, or restart Explorer (Task Manager, Windows Explorer, Restart). The agent itself keeps its icon if Explorer restarts: the WinForms notification icon re-adds itself when Windows broadcasts that the taskbar was re-created (not confirmed on a real PC yet).
 
 ## Local status endpoint (status only)
 
@@ -101,7 +129,8 @@ dotnet run --project Dla.Agent
 | Piece | Role |
 |---|---|
 | `Program.cs` | Wires the pieces together. A no-console Windows program. First line of defence: `SingleInstance`. |
-| `SingleInstance.cs` | One copy at a time (a named mutex). |
+| `SingleInstance.cs`, `AgentStartup.cs` | The one guard (named mutex, held in a static field) and the "guard first" start-up step. |
+| `ExitCleanup.cs` | Removes the tray icon on logoff, crash, application exit and process exit. |
 | `AgentLauncher.cs` | The start-up in order: onboarding, then (only with consent) the tray, then run until Quit. |
 | `OnboardingFlow.cs` | Valid consent, else ask, then save on Accept only. |
 | `Consent/*` | The terms text and version, the strict consent file reader and writer, and the gate. |
@@ -116,5 +145,4 @@ dotnet run --project Dla.Agent
 ## What comes later
 
 1. Event transfer from the extension (design decided Day 3).
-2. Tracking (foreground app and idle or presence), following `contracts/event-schema.md`.
-3. Packaging as a normal `.exe`, and starting with Windows.
+2. Packaging as a normal `.exe`.

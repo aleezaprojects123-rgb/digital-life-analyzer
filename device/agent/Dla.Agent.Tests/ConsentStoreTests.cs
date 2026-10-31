@@ -79,6 +79,17 @@ public class ConsentStoreTests
     }
 
     [Fact]
+    public void A_consent_saved_for_the_previous_text_version_asks_the_user_again_but_the_current_one_does_not()
+    {
+        using var t = new TempData();
+        t.WriteConsentFile(Valid(1));                                                   // accepted under version 1, before app names and start-with-Windows were described
+        Assert.False(new ConsentStore(t.DataDir).HasValidConsent());
+        Assert.Null(new ConsentStore(t.DataDir).AcceptedAtUtc());
+        t.WriteConsentFile(Valid(ConsentText.Version));
+        Assert.True(new ConsentStore(t.DataDir).HasValidConsent());
+    }
+
+    [Fact]
     public void A_newer_version_also_means_not_consented_to_stay_on_the_safe_side()
     {
         using var t = new TempData();
@@ -101,7 +112,7 @@ public class ConsentStoreTests
     public void Extra_unknown_fields_do_not_make_a_valid_file_invalid()
     {
         using var t = new TempData();
-        t.WriteConsentFile("""{ "consentVersion": 1, "acceptedAtUtc": "2026-10-28T05:15:00Z", "note": "hello" }""");
+        t.WriteConsentFile($$"""{ "consentVersion": {{ConsentText.Version}}, "acceptedAtUtc": "2026-10-28T05:15:00Z", "note": "hello" }""");
         Assert.True(new ConsentStore(t.DataDir).HasValidConsent());
     }
 
