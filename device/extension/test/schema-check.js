@@ -65,4 +65,5 @@ export function check(schema, value, root = schema, path = "$") {
   return errors;
 }
 
+/** Validates an event against contracts/event.schema.json exactly as it is in the repository. */
 export const validateEvent = (event) => check(eventSchema, event);

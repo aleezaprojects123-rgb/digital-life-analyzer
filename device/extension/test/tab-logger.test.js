@@ -97,7 +97,7 @@ test("a tab switch closes one event and opens the next", async () => {
   const [first, second] = logger.events;
   assert.equal(first.domain, "youtube.com");
   assert.equal(first.url, "https://www.youtube.com/shorts/*");
-  assert.equal(first.title, null); // the sanitizer masked part of the path, so the title is dropped
+  assert.equal(first.title, "A short"); // a masked Shorts id is a public video id: the video title is kept
   assert.equal(first.start, "2026-10-27T05:15:00Z");
   assert.equal(first.end, "2026-10-27T05:16:30Z");
   assert.equal(first.duration_seconds, 90);
@@ -108,19 +108,21 @@ test("a tab switch closes one event and opens the next", async () => {
   assertAllValid(logger.events);
 });
 
-test("every event has exactly the 16 contract fields with the extension values", async () => {
+test("every event has exactly the canonical browser-event fields with the extension values", async () => {
   const { logger } = makeLogger();
   await logger.update(tab(1, "https://example.com/docs"), secs(0));
   await logger.update(null, secs(7));
   const [e] = logger.events;
   assert.deepEqual(Object.keys(e).sort(), [
-    "app", "category", "confidence", "domain", "duration_seconds", "end", "id", "idle", "label_source", "presence",
-    "schema_version", "source", "start", "title", "uncertain", "url",
+    "activity_type", "category", "confidence", "content_count", "domain", "duration_seconds", "end", "id", "label_source",
+    "platform", "schema_version", "session_id", "source", "start", "title", "uncertain", "url",
   ]);
   assert.deepEqual({ ...e, id: undefined }, {
     schema_version: "1", id: undefined, start: "2026-10-27T05:15:00Z", end: "2026-10-27T05:15:07Z", duration_seconds: 7,
-    source: "extension", app: null, domain: "example.com", url: "https://example.com/docs", title: "A page",
-    idle: false, presence: null, category: null, confidence: null, uncertain: false, label_source: null,
+    source: "extension", domain: "example.com", url: "https://example.com/docs", title: "A page",
+    platform: "unknown", activity_type: "webpage",
+    content_count: 0, session_id: null,
+    category: null, confidence: null, uncertain: false, label_source: null,
   });
 });
 
@@ -308,4 +310,285 @@ test("the event code never leaks the raw URL, query, fragment, userinfo or a mas
   const text = JSON.stringify(logger.events);
   for (const leak of ["hunter2", "bob", "9000", "Ab3dE9xQ2zK", "SECRET123", "frag", "session="]) assert.ok(!text.includes(leak), leak);
   assertAllValid(logger.events);
+});
+
+// ---- mixed sequences: normal page -> excluded page -> normal page ------------------------------------------------------
+// The popup count is events.length, i.e. FINISHED periods. Leaving a normal page for an excluded one finishes that
+// normal page's period (count +1). The excluded page itself must never become an event.
+
+const domainsOf = (logger) => logger.events.map((e) => e.domain);
+
+test("normal -> private -> normal: only the two normal pages become events, the private page none", async () => {
+  const { logger } = makeLogger();
+  await logger.update(tab(1, "https://first.example.com/a"), secs(0));
+  await logger.update(tab(2, "https://private-site.example.org/secret-area", "Private title", true), secs(10)); // a private snapshot
+  assert.deepEqual(domainsOf(logger), ["example.com"]);   // leaving the first page ended it: +1
+  assert.equal(logger.open, null);                        // nothing is open for the private page
+  await logger.update(tab(3, "https://second.example.net/b"), secs(40));
+  await logger.update(null, secs(50));
+
+  assert.deepEqual(domainsOf(logger), ["example.com", "example.net"]);
+  assert.ok(!JSON.stringify(logger.events).includes("private-site"));
+  assert.ok(!JSON.stringify(logger.events).includes("Private title"));
+  assertAllValid(logger.events);
+});
+
+test("normal -> several private pages -> normal: moving between private pages changes nothing", async () => {
+  const { logger } = makeLogger();
+  await logger.update(tab(1, "https://first.example.com/a"), secs(0));
+  const afterLeaving = [];
+  for (const [i, host] of ["p1.example.org", "p2.example.org", "p3.example.org", "p4.example.org"].entries()) {
+    await logger.update(tab(10 + i, `https://${host}/x`, "t", true), secs(10 + i));
+    afterLeaving.push(logger.events.length);
+  }
+  assert.deepEqual(afterLeaving, [1, 1, 1, 1]);           // +1 once, then no change
+  assert.equal(logger.open, null);
+});
+
+test("normal -> internal pages -> normal: only the two normal pages become events", async () => {
+  const { logger } = makeLogger();
+  await logger.update(tab(1, "https://first.example.com/a"), secs(0));
+  await logger.update(tab(1, "edge://settings"), secs(10));       // the same tab goes to an internal page
+  assert.equal(logger.events.length, 1);                          // +1: the normal page ended
+  for (const [i, url] of ["chrome://settings", "edge://newtab/", "about:blank", "", "file:///C:/x.txt", "chrome-extension://abcdefghijklmnopabcdefghijklmnop/popup.html"].entries()) {
+    await logger.update(tab(2 + i, url), secs(11 + i));
+    assert.equal(logger.events.length, 1, url);                   // moving among excluded pages adds nothing
+    assert.equal(logger.open, null, url);
+  }
+  await logger.update(tab(20, "https://second.example.net/b"), secs(30));
+  await logger.update(null, secs(40));
+
+  assert.deepEqual(domainsOf(logger), ["example.com", "example.net"]);
+  assertAllValid(logger.events);
+});
+
+test("the count equals the number of normal pages that have ended, whatever excluded pages come between", async () => {
+  const { logger } = makeLogger();
+  const steps = [
+    tab(1, "https://a.example.com/"), tab(2, "edge://settings"), tab(3, "https://b.example.com/", "t", true),
+    tab(4, "https://c.example.com/"), tab(5, "about:blank"), tab(6, "https://d.example.com/"), null,
+  ];
+  let t = 0;
+  const counts = [];
+  for (const step of steps) { await logger.update(step, secs(t++)); counts.push(logger.events.length); }
+  // a ends at step 2 (1), c ends at step 5 (2), d ends at the focus loss (3). The private b and internal pages add none.
+  assert.deepEqual(counts, [0, 1, 1, 1, 2, 2, 3]);
+  assert.deepEqual(domainsOf(logger), ["example.com", "example.com", "example.com"]);
+  assert.deepEqual(logger.events.map((e) => e.url), ["https://a.example.com", "https://c.example.com", "https://d.example.com"]);
+});
+
+test("the page you are on is not counted until you leave it", async () => {
+  const { logger } = makeLogger();
+  await logger.update(tab(1, "https://a.example.com/"), secs(0));
+  assert.deepEqual(await logger.summary(), { recording: true, eventCount: 0 });
+  await logger.update(tab(2, "https://b.example.com/"), secs(5));
+  assert.deepEqual(await logger.summary(), { recording: true, eventCount: 1 });
+});
+
+test("a title change or a same-page update does not raise the count; a second tab on the same address does", async () => {
+  const { logger } = makeLogger();
+  await logger.update(tab(1, "https://a.example.com/x", "One"), secs(0));
+  await logger.update(tab(1, "https://a.example.com/x?y=1", "Two"), secs(2));   // same page, new title
+  assert.equal(logger.events.length, 0);
+  await logger.update(tab(2, "https://a.example.com/x", "One"), secs(4));        // another tab, same address: a new period
+  assert.equal(logger.events.length, 1);
+});
+
+// ---- the popup takes the focus: that must not end a page's period -------------------------------------------------------
+
+const focusLoss = { focusLoss: true };
+
+test("popup: a focus loss followed by 'the popup opened' is taken back, with the original start time", async () => {
+  const { logger } = makeLogger();
+  await logger.update(tab(1, "https://a.example.com/x"), secs(0));
+  await logger.update(null, secs(10), focusLoss);               // the popup took the focus
+  assert.equal(logger.events.length, 1);                        // for a moment it looks like the page ended
+  logger.popupOpened();
+  assert.equal(logger.events.length, 0);                        // taken back
+  assert.equal(logger.open.startMs, secs(0));                   // still the same period, same start
+
+  await logger.update(tab(1, "https://a.example.com/x"), secs(12));   // the popup closes and the window has focus again
+  await logger.update(tab(2, "https://b.example.com/"), secs(30));
+  assert.equal(logger.events.length, 1);
+  assert.equal(logger.events[0].start, toUtcSeconds(secs(0)));
+  assert.equal(logger.events[0].duration_seconds, 30);
+  assertAllValid(logger.events);
+});
+
+test("popup: while it is open a focus loss is ignored", async () => {
+  const { logger } = makeLogger();
+  await logger.update(tab(1, "https://a.example.com/x"), secs(0));
+  logger.popupOpened();
+  await logger.update(null, secs(5), focusLoss);
+  assert.equal(logger.events.length, 0);
+  assert.notEqual(logger.open, null);
+  logger.popupClosed();
+  await logger.update(null, secs(8), focusLoss);                // after it closed, a real loss ends the period again
+  assert.equal(logger.events.length, 1);
+  assert.equal(logger.events[0].duration_seconds, 8);
+});
+
+test("popup: only a focus loss can be taken back, not leaving for an internal page or a private window", async () => {
+  const { logger } = makeLogger();
+  await logger.update(tab(1, "https://a.example.com/x"), secs(0));
+  await logger.update(tab(1, "edge://settings"), secs(10));     // null, but not a focus loss
+  logger.popupOpened();
+  assert.equal(logger.events.length, 1);                        // stays ended
+  assert.equal(logger.open, null);
+
+  const second = makeLogger().logger;
+  await second.update(tab(1, "https://a.example.com/x"), secs(0));
+  await second.update(tab(2, "https://p.example.org/", "t", true), secs(10));   // a private snapshot
+  second.popupOpened();
+  assert.equal(second.events.length, 1);
+});
+
+test("popup: anything that happened after the focus loss makes it final", async () => {
+  const { logger } = makeLogger();
+  await logger.update(tab(1, "https://a.example.com/x"), secs(0));
+  await logger.update(null, secs(10), focusLoss);
+  await logger.update(tab(2, "https://b.example.com/"), secs(11));   // the user is on another page now
+  logger.popupOpened();
+  assert.equal(logger.events.length, 1);
+  assert.equal(logger.open.url, "https://b.example.com");
+});
+
+test("popup: it is taken back only once, and does nothing when no period was ended", async () => {
+  const { logger } = makeLogger();
+  logger.popupOpened();                                         // nothing open, nothing to undo
+  logger.popupClosed();
+  await logger.update(tab(1, "https://a.example.com/x"), secs(0));
+  await logger.update(null, secs(5), focusLoss);
+  logger.popupOpened();
+  logger.popupOpened();
+  assert.equal(logger.events.length, 0);
+  assert.notEqual(logger.open, null);
+});
+
+test("popup: a pause or missing consent still drops everything, popup or not", async () => {
+  const { logger, state } = makeLogger();
+  await logger.update(tab(1, "https://a.example.com/x"), secs(0));
+  logger.popupOpened();
+  state.status = PAUSED;
+  await logger.update(tab(2, "https://b.example.com/"), secs(5));
+  assert.equal(logger.open, null);
+  state.status = RECORDING;
+  logger.popupClosed();
+  await logger.update(null, secs(8), focusLoss);
+  assert.equal(logger.events.length, 0);
+});
+
+test("popup: internal pages and private tabs are still never recorded while the popup is open", async () => {
+  const { logger } = makeLogger();
+  logger.popupOpened();
+  await logger.update(tab(1, "chrome://settings"), secs(0));
+  await logger.update(tab(2, "https://p.example.org/", "t", true), secs(1));
+  await logger.update(tab(3, "https://a.example.com/"), secs(2));
+  await logger.update(null, secs(9));                           // not a focus loss: ends it
+  assert.deepEqual(domainsOf(logger), ["example.com"]);
+  assert.ok(!JSON.stringify(logger.events).includes("p.example.org"));
+});
+
+// ---- a period that ended because the browser lost focus is delivered even if nothing else ever happens ---------------------
+
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+test("leaving for another app: the held period is delivered by itself after the hold time", async () => {
+  const sent = [];
+  const { logger } = makeLogger(RECORDING, { holdMs: 20, onEventClosed: (e) => sent.push(e) });
+  await logger.update(tab(1, "https://github.com/x"), secs(0));
+  await logger.update(null, secs(25), focusLoss);               // switched to VS Code
+  assert.equal(sent.length, 0);                                 // held for a moment (the popup could take it back)
+  await wait(60);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].domain, "github.com");
+  assert.equal(sent[0].duration_seconds, 25);
+  assert.equal(logger.events.length, 1);
+  await wait(60);
+  assert.equal(sent.length, 1);                                 // sent once, not twice
+});
+
+test("the popup opening inside the hold time cancels the delivery (the page was never left)", async () => {
+  const sent = [];
+  const { logger } = makeLogger(RECORDING, { holdMs: 20, onEventClosed: (e) => sent.push(e) });
+  await logger.update(tab(1, "https://github.com/x"), secs(0));
+  await logger.update(null, secs(10), focusLoss);
+  logger.popupOpened();
+  await wait(60);
+  assert.equal(sent.length, 0);
+  assert.equal(logger.events.length, 0);
+  assert.equal(logger.open.startMs, secs(0));
+});
+
+test("a change after the focus loss sends the held period at once and only once", async () => {
+  const sent = [];
+  const { logger } = makeLogger(RECORDING, { holdMs: 20, onEventClosed: (e) => sent.push(e) });
+  await logger.update(tab(1, "https://github.com/x"), secs(0));
+  await logger.update(null, secs(10), focusLoss);
+  await logger.update(tab(2, "https://b.example.com/"), secs(12));
+  assert.equal(sent.length, 1);
+  await wait(60);
+  assert.equal(sent.length, 1);
+});
+
+// ---- the video changes inside the same tab (YouTube Shorts swipe, next /watch video) ------------------------------------------
+
+const SHORT_A = "https://www.youtube.com/shorts/mF2kqwe91Zc";   // masks to /shorts/*
+const SHORT_B = "https://www.youtube.com/shorts/Zk9qPw3LxT7";   // masks to /shorts/* as well
+
+test("Short A -> Short B in the same tab: two events, each with its own title, the id is never stored", async () => {
+  const { logger } = makeLogger();
+  await logger.update(tab(1, SHORT_A, "First short - YouTube"), secs(0));
+  await logger.update(tab(1, SHORT_B, "First short - YouTube"), secs(20));   // url changed, tab title not yet updated
+  await logger.update(tab(1, SHORT_B, "Second short - YouTube"), secs(21));  // the page updates its title
+  await logger.update(null, secs(50), { focusLoss: true });
+  logger.flush();
+
+  assert.equal(logger.events.length, 2);
+  const [a, b] = logger.events;
+  assert.equal(a.url, "https://www.youtube.com/shorts/*");
+  assert.equal(b.url, "https://www.youtube.com/shorts/*");
+  assert.equal(a.title, "First short - YouTube");
+  assert.equal(b.title, "Second short - YouTube");
+  assert.equal(a.duration_seconds, 20);
+  assert.equal(b.duration_seconds, 30);
+  const everything = JSON.stringify(logger.events);
+  assert.ok(!everything.includes("mF2kqwe91Zc") && !everything.includes("Zk9qPw3LxT7"), "the raw id must never be in an event");
+  assert.ok(!Object.keys(a).includes("key"));
+});
+
+test("a title that did not change after the video changed is not trusted for the new video", async () => {
+  const { logger } = makeLogger();
+  await logger.update(tab(1, SHORT_A, "Old title - YouTube"), secs(0));
+  await logger.update(tab(1, SHORT_B, "Old title - YouTube"), secs(10));
+  await logger.update(null, secs(40), { focusLoss: true });
+  logger.flush();
+  assert.equal(logger.events[0].title, "Old title - YouTube");
+  assert.equal(logger.events[1].title, null);   // nothing invented
+});
+
+test("/watch?v=A -> /watch?v=B in the same tab is two events, although the stored URL is the same", async () => {
+  const { logger } = makeLogger();
+  await logger.update(tab(1, "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "Song one - YouTube"), secs(0));
+  await logger.update(tab(1, "https://www.youtube.com/watch?v=9bZkp7q19f0", "Song one - YouTube"), secs(200));
+  await logger.update(tab(1, "https://www.youtube.com/watch?v=9bZkp7q19f0", "Song two - YouTube"), secs(201));
+  await logger.update(null, secs(260), { focusLoss: true });
+  logger.flush();
+  assert.equal(logger.events.length, 2);
+  assert.equal(logger.events[0].url, "https://www.youtube.com/watch");
+  assert.equal(logger.events[0].title, "Song one - YouTube");
+  assert.equal(logger.events[1].title, "Song two - YouTube");
+  assert.ok(!JSON.stringify(logger.events).includes("dQw4w9WgXcQ"));
+});
+
+test("the same video with only a new title stays one event; a masked path on another site still has no title", async () => {
+  const { logger } = makeLogger();
+  await logger.update(tab(1, SHORT_A, "Loading - YouTube"), secs(0));
+  await logger.update(tab(1, SHORT_A, "Real title - YouTube"), secs(2));
+  await logger.update(tab(2, "https://example.com/reset/ab12", "Reset your password"), secs(30));
+  await logger.update(null, secs(60), { focusLoss: true });
+  logger.flush();
+  assert.equal(logger.events.length, 2);
+  assert.equal(logger.events[0].title, "Real title - YouTube");
+  assert.equal(logger.events[1].title, null);
 });

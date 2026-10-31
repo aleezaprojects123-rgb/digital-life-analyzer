@@ -22,7 +22,23 @@ The tray icon is created **only by `AgentHost`, and only after the consent gate 
 
 The pause state lives in memory only, so it is ON again after a restart. Pausing never changes consent.
 
-**Not done yet** (do not assume any of these work): tracking of any kind, any transfer of events from the extension, watching for consent being withdrawn while the agent runs (a deleted consent file takes effect at the next start), an `.exe` package or installer, starting with Windows.
+**Not done yet** (do not assume any of these work): tracking of any kind, any transfer of events from the extension, watching for consent being withdrawn while the agent runs (a deleted consent file takes effect at the next start), an `.exe` package or installer (start-with-Windows is wired, see "Starting automatically", but only for a program file named `Dla.Agent.exe`).
+
+## Starting automatically
+
+After the user accepts once, nobody runs `dotnet run` or any other command again:
+
+1. Windows signs the user in and starts `Dla.Agent.exe` from the ONE per-user entry `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\DigitalLifeAnalyzer` (it is also listed in Windows Settings > Apps > Startup, where it can be switched off).
+2. The single-instance guard is taken first. A second copy exits silently.
+3. Consent is checked. Valid consent: no window is shown. No consent: the consent window is shown, nothing else exists, and the start-up entry is removed.
+4. After consent only: the tray icon, the local link (a new recording session id), SQLite (`%LocalAppData%\DigitalLifeAnalyzer\dla.db`, 30-day cleanup, import of the older JSONL) start, and the start-up entry is written (once; repeating it changes nothing).
+5. The extension finds the agent on `127.0.0.1` by itself (it asks `/status` and sends events). The agent never starts a browser.
+
+If the agent itself crashes or is ended, nothing restarts it until the next sign-in: there is deliberately no second watchdog mechanism.
+
+## What the program collects
+
+**Nothing by itself.** The Chrome/Edge extension is the ONLY activity collector. The program only receives the extension's finished browser periods on `127.0.0.1`, checks them, stamps the recording session id, optionally adds the title/artist the Windows media controls show for a browser tab that was playing, and saves them to SQLite. There is no desktop tracker: no foreground-application tracking, no program names, no Python process, and no idle or presence measurement. Pausing from the tray, or withdrawing consent, makes the status link tell the extension to stop recording.
 
 ## One icon
 
@@ -129,5 +145,4 @@ dotnet run --project Dla.Agent
 ## What comes later
 
 1. Event transfer from the extension (design decided Day 3).
-2. Tracking (foreground app and idle or presence), following `contracts/event-schema.md`.
-3. Packaging as a normal `.exe`, and starting with Windows.
+2. Packaging as a normal `.exe`.

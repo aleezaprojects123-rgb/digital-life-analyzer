@@ -918,6 +918,6 @@ public class LinkConsentTests
             body = client.Send(request).Content.ReadAsStringAsync().Result;
         }).Launch();
 
-        Assert.Equal("""{"consented":true,"trackingEnabled":true,"consentVersion":1}""", body);
+        Assert.Equal($$"""{"consented":true,"trackingEnabled":true,"consentVersion":{{ConsentText.Version}}}""", body);
     }
 }

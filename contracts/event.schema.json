@@ -2,12 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:dla:contracts:event.schema.json",
   "title": "DLA event (Contract 1, schema_version 1)",
-  "description": "One recorded event, from the browser extension or the Windows agent. Human-readable version: event-schema.md. JSON Schema cannot check that duration_seconds equals end minus start, or that end is not before start, or that the host of url matches domain: the code that writes events must guarantee all three.",
+  "description": "One recorded browser activity period, written by the Chrome/Edge extension (the only collector). Human-readable version: event-schema.md. JSON Schema cannot check that duration_seconds equals end minus start, or that end is not before start, or that the host of url matches domain: the code that writes events must guarantee all three.",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "schema_version", "id", "start", "end", "duration_seconds", "source",
-    "app", "domain", "url", "title", "idle", "presence", "category", "confidence", "uncertain", "label_source"
+    "platform", "domain", "url", "title", "activity_type", "content_count", "session_id",
+    "category", "confidence", "uncertain", "label_source"
   ],
   "properties": {
     "schema_version": { "const": "1" },
@@ -24,23 +25,23 @@
       "type": "integer",
       "minimum": 0
     },
-    "source": { "enum": ["extension", "agent"] },
-    "app": {
-      "description": "Process name for agent events. null for extension events and idle events.",
-      "type": ["string", "null"],
-      "minLength": 1,
-      "maxLength": 260,
-      "pattern": "^[^\\\\/]+$"
+    "source": {
+      "description": "Always the browser extension: it is the only collector.",
+      "const": "extension"
+    },
+    "platform": {
+      "description": "The service the page belongs to. unknown for any other website.",
+      "enum": ["youtube", "instagram", "tiktok", "reddit", "facebook", "whatsapp", "spotify", "netflix", "github", "google", "unknown"]
     },
     "domain": {
-      "description": "Website domain only, lowercase, no scheme, path, query or port. null unless the event came from the extension.",
-      "type": ["string", "null"],
+      "description": "Website domain only, lowercase, no scheme, path, query or port.",
+      "type": "string",
       "maxLength": 253,
       "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$"
     },
     "url": {
-      "description": "Sanitized URL, extension events only (null otherwise): scheme, domain and path, nothing else. The query string and the fragment are always removed. Long random-looking path segments and known sensitive patterns (reset or login tokens, session ids, email or account ids) are replaced with *. The extension does this cleaning before anything is sent on. Stored only on the PC and never synced. The two 'not' checks below are a last-line safety net, not the cleaning itself.",
-      "type": ["string", "null"],
+      "description": "Sanitized URL: scheme, domain and path, nothing else. The query string and the fragment are always removed. Long random-looking path segments and known sensitive patterns (reset or login tokens, session ids, email or account ids) are replaced with *. The extension does this cleaning before anything is sent on. Stored only on the PC and never synced. The two 'not' checks below are a last-line safety net, not the cleaning itself.",
+      "type": "string",
       "maxLength": 2048,
       "pattern": "^https?://[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+(/[^?#\\s]*)?$",
       "not": {
@@ -51,17 +52,30 @@
       }
     },
     "title": {
-      "description": "Window or tab title, only when permitted. null (or masked) otherwise.",
+      "description": "Tab title, only when permitted. null (or masked) otherwise.",
       "type": ["string", "null"]
     },
-    "idle": {
-      "description": "true exactly when presence is \"away\". Set by the agent only.",
-      "type": "boolean"
+    "activity_type": {
+      "description": "What kind of page the period was spent on. Time-only kinds (a feed, a home page, a search) are never counted as content items.",
+      "enum": ["webpage", "search", "video", "short_video", "reel", "music", "post", "article", "document", "social_feed", "messaging", "meeting", "shopping", "game", "unknown"]
     },
-    "presence": {
-      "description": "Is the user there? active = recent input. passive = no input, but foreground media or a call is running. uncertain = no input and no media, but a reader, slide or document app is in the foreground, so reading is possible. away = locked, asleep, display off, or no input and no signals after the waits. The extension writes null; the Windows agent fills it when it merges events into the timeline, because only the agent decides presence. This is separate from category and from the label field 'uncertain'.",
-      "enum": ["active", "passive", "uncertain", "away", null]
+    "content_count": {
+      "description": "1 when this period is where the user moved to a NEW content item (a Reel, a video, a Short, a post opened on its own address) on a platform whose items can be told apart reliably, else 0. Never invented for feeds. Items watched = SUM(content_count).",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1
     },
+    "session_id": {
+      "description": "The recording session this event belongs to. The extension writes null; the local program stamps the id of the current session when it accepts the event.",
+      "type": ["string", "null"],
+      "maxLength": 64
+    },
+    "media_title": { "description": "Optional, added by the local program when the Windows media controls match this page: the title shown there.", "type": ["string", "null"], "maxLength": 2048 },
+    "artist": { "description": "Optional, from the same match.", "type": ["string", "null"], "maxLength": 2048 },
+    "album": { "description": "Optional, from the same match.", "type": ["string", "null"], "maxLength": 2048 },
+    "media_type": { "description": "Optional, from the same match.", "type": ["string", "null"], "maxLength": 2048 },
+    "playback": { "description": "Optional, from the same match: playing or paused.", "type": ["string", "null"], "maxLength": 2048 },
+    "media_app": { "description": "Optional, from the same match: the browser that was playing it.", "type": ["string", "null"], "maxLength": 2048 },
     "category": {
       "description": "Label from the on-device AI. null until labelled.",
       "enum": ["Study", "Work", "Entertainment", "Social Media", "Other", null]
@@ -79,44 +93,6 @@
     "label_source": { "enum": ["model", "rules", null] }
   },
   "allOf": [
-    {
-      "description": "Extension events: no app, a domain, never idle.",
-      "if": { "properties": { "source": { "const": "extension" } } },
-      "then": {
-        "properties": {
-          "app": { "type": "null" },
-          "domain": { "type": "string" },
-          "idle": { "const": false }
-        }
-      }
-    },
-    {
-      "description": "Agent events never have a domain or a url.",
-      "if": { "properties": { "source": { "const": "agent" } } },
-      "then": { "properties": { "domain": { "type": "null" }, "url": { "type": "null" } } }
-    },
-    {
-      "description": "Agent events that are not idle have an app (process name).",
-      "if": {
-        "properties": { "source": { "const": "agent" }, "idle": { "const": false } }
-      },
-      "then": { "properties": { "app": { "type": "string" } } }
-    },
-    {
-      "description": "Idle events have no app.",
-      "if": { "properties": { "idle": { "const": true } } },
-      "then": { "properties": { "app": { "type": "null" } } }
-    },
-    {
-      "description": "idle is true only when presence is away.",
-      "if": { "properties": { "idle": { "const": true } } },
-      "then": { "properties": { "presence": { "const": "away" } } }
-    },
-    {
-      "description": "presence away always means idle is true.",
-      "if": { "properties": { "presence": { "const": "away" } }, "required": ["presence"] },
-      "then": { "properties": { "idle": { "const": true } } }
-    },
     {
       "description": "Not labelled yet: no confidence, no label source, not uncertain.",
       "if": { "properties": { "category": { "type": "null" } }, "required": ["category"] },

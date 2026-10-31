@@ -1,5 +1,6 @@
 using Dla.Agent.Consent;
 using Dla.Agent.Link;
+using Dla.Agent.Startup;
 using Dla.Agent.Tray;
 
 namespace Dla.Agent;
@@ -8,26 +9,37 @@ namespace Dla.Agent;
 /// Starts the agent, but only if the consent gate says yes. Without consent it does nothing at all: it creates
 /// no tray icon and starts nothing, because the tray is created only inside <see cref="TryStart"/>.
 ///
-/// The future onboarding screen decides when to call TryStart (after the user explicitly accepts). Later days add
-/// the consented features here, for example tracking, always inside the "consent is given" branch.
+/// The onboarding screen decides when to call TryStart (after the user explicitly accepts). What the agent does for the browser
+/// extension (the local link, the database) is started here, always inside the "consent is given" branch.
 /// </summary>
 public sealed class AgentHost : IDisposable
 {
     private readonly IConsentGate _consent;
     private readonly Func<ITray> _createTray;
     private readonly Func<IAgentLink>? _createLink;
+    private readonly IAgentLog? _log;
     private ITray? _tray;
     private IAgentLink? _link;
+    private readonly IStartupRegistration? _startup;
     private readonly object _gate = new();   // Stop may be called from an exit signal on another thread
 
     /// <param name="consent">Says whether the user has explicitly accepted.</param>
     /// <param name="createTray">Creates the tray. It is called only after consent, never at startup.</param>
     /// <param name="createLink">Creates the local status link for the extension. Called only after consent, never at startup. Optional.</param>
-    public AgentHost(IConsentGate consent, Func<ITray> createTray, Func<IAgentLink>? createLink = null)
+    /// <param name="log">Status log for reporting failures. Optional.</param>
+    /// <param name="startup">The one start-with-Windows entry. Set up only after consent, removed when there is no consent. Optional.</param>
+    public AgentHost(
+        IConsentGate consent,
+        Func<ITray> createTray,
+        Func<IAgentLink>? createLink = null,
+        IAgentLog? log = null,
+        IStartupRegistration? startup = null)
     {
+        _startup = startup;
         _consent = consent;
         _createTray = createTray;
         _createLink = createLink;
+        _log = log;
     }
 
     public bool IsRunning => _tray is not null;
@@ -44,7 +56,11 @@ public sealed class AgentHost : IDisposable
         lock (_gate)
         {
             if (_tray is not null) return true;           // already running: never create a second tray
-            if (!_consent.HasConsent) return false;       // no consent: do nothing
+            if (!_consent.HasConsent)
+            {
+                _startup?.Remove();                       // no consent: nothing starts with Windows either
+                return false;                             // and nothing else is done
+            }
 
             var tray = _createTray();
             try
@@ -58,6 +74,7 @@ public sealed class AgentHost : IDisposable
             }
             _tray = tray;
             StartLink();
+            _startup?.Ensure();                           // consent is on record: DLA starts again at the next sign-in
             return true;
         }
     }

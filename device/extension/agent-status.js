@@ -1,12 +1,11 @@
-// Asks the Windows agent one question: "may I record right now?" (GET /status on 127.0.0.1).
+// Asks the Windows agent: "may I record right now?" (GET /status on 127.0.0.1)
+// and sends finished browser activity events (POST /events on 127.0.0.1).
 //
-// This is the ONLY network request the extension makes. It sends nothing about the user, and the answer is cached
-// for a few seconds (never more than 15) so tab changes do not cause a request each time.
-//
-// Anything other than a clear "consented: true AND trackingEnabled: true" means NO recording:
-// the agent not running, a wrong port, a slow answer, an HTTP error, bad JSON, a missing field, a field of the wrong type.
+// These are the ONLY network requests the extension makes.
+// Anything other than a clear "consented: true AND trackingEnabled: true" means NO recording.
 
 export const STATUS_URL = "http://127.0.0.1:49721/status";
+export const EVENTS_URL = "http://127.0.0.1:49721/events";
 export const CACHE_MS = 10_000; // must stay at or under 15 seconds
 const TIMEOUT_MS = 2_000;
 
@@ -64,6 +63,124 @@ export function createStatusClient({
       const value = await pending;
       cached = { at: now(), value };
       return value;
+    },
+  };
+}
+
+/**
+ * Sends a single closed browser event to the Windows agent over the local link.
+ */
+export async function sendBrowserEvent(event, options = {}) {
+  return (await postEvent(event, options)) === "sent";
+}
+
+/**
+ * "sent"     the agent saved it (or already had it).
+ * "rejected" the agent read it and said 400: this event can never be accepted, so retrying would block every later event.
+ * "retry"    anything else (agent not running, 403 paused, 5xx, timeout): keep it and try again later.
+ */
+export async function postEvent(event, {
+  fetchFn = (...a) => fetch(...a),
+  url = EVENTS_URL,
+  extensionId = globalThis.chrome?.runtime?.id,
+} = {}) {
+  try {
+    const response = await fetchFn(url, {
+      method: "POST",
+      cache: "no-store",
+      credentials: "omit",
+      headers: {
+        "Content-Type": "application/json",
+        ...(extensionId ? { [ID_HEADER]: extensionId } : {}),
+      },
+      body: JSON.stringify(event),
+      redirect: "error",
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    if (response.ok) return "sent";
+    if (response.status === 400) {
+      let code = "unknown";
+      try { code = String((await response.json())?.error ?? code); } catch { /* no readable reason */ }
+      console.warn(`[DLA] The agent rejected one browser event (${code}). It was dropped.`); // a reason code only, never page data
+      return "rejected";
+    }
+    return "retry";
+  } catch {
+    return "retry";
+  }
+}
+
+/**
+ * Reliable event queue that holds events if the agent is temporarily offline or busy,
+ * and drains them when tracking is permitted.
+ */
+export function createEventSender({
+  fetchFn = (...a) => fetch(...a),
+  url = EVENTS_URL,
+  extensionId = globalThis.chrome?.runtime?.id,
+  getStatus,
+  maxQueue = 100,
+} = {}) {
+  const queue = [];
+  let running = null;
+  let rerun = false;
+
+  async function drain() {
+    if (running) {
+      rerun = true;
+      return running;
+    }
+    // `running` is cleared in .finally(), which runs after this assignment. (Clearing it inside the async function
+    // is wrong: with an empty queue the function ends before the assignment, and `running` would stay set forever,
+    // so nothing would ever be sent.)
+    running = (async () => {
+      try {
+        do {
+          rerun = false;
+          while (queue.length > 0) {
+            if (getStatus) {
+              const st = await getStatus();
+              if (st.noConsent) {
+                queue.length = 0;
+                break;
+              }
+              if (!st.recording) {
+                break; // paused or unreachable: keep queued events until ready
+              }
+            }
+            const item = queue[0];
+            const outcome = await postEvent(item, { fetchFn, url, extensionId });
+            if (outcome === "retry") {
+              break; // agent busy or not there: try again at the next change
+            }
+            if (queue[0] === item) queue.shift(); // "sent" or "rejected" (never retried)
+            else {
+              const at = queue.indexOf(item);
+              if (at >= 0) queue.splice(at, 1);
+            }
+          }
+        } while (rerun);
+      } catch {
+        // never leak unhandled rejections
+      }
+    })().finally(() => { running = null; });
+    return running;
+  }
+
+  return {
+    send(event) {
+      if (queue.length >= maxQueue) {
+        queue.shift();
+      }
+      queue.push(event);
+      drain().catch(() => {});
+    },
+    drain,
+    get queueLength() {
+      return queue.length;
+    },
+    clear() {
+      queue.length = 0;
     },
   };
 }

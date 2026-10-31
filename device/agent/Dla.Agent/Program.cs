@@ -1,6 +1,7 @@
 using System.Windows.Forms;
 using Dla.Agent.Consent;
 using Dla.Agent.Link;
+using Dla.Agent.Startup;
 using Dla.Agent.Tray;
 using Dla.Agent.Ui;
 
@@ -31,13 +32,29 @@ internal static class Program
             log: log,
             utcNow: () => DateTimeOffset.UtcNow);
 
-        // The tray and the local status link are created by AgentHost, and only after the consent gate says yes.
+        // The tray and the local status link (for the browser extension) are created by AgentHost, and only after the consent gate says yes.
         using var host = new AgentHost(
             gate,
             createTray: () => new TrayController(state),
-            createLink: () => new LocalStatusLink(AgentLinkConfig.Load(store.DataDir), new AgentStatusProvider(gate, state), log));
+            createLink: () =>
+            {
+                var status = new AgentStatusProvider(gate, state);
+                var media = new Dla.Agent.Media.MediaCollector(
+                    new Dla.Agent.Media.SmtcMediaSource(),
+                    allowed: () => status.GetStatus() is { Consented: true, TrackingEnabled: true },
+                    log: log);
+                var (sink, upkeep) = Dla.Agent.Storage.EventStorageFactory.Create(store.DataDir, JsonlEventSink.DefaultEventsFilePath(), log);
+                // Reports are read from the same database the events are written to; with only the older log file there is no database to report from.
+                Dla.Agent.Reports.IReportService? reports = sink is Dla.Agent.Storage.SqliteEventSink db
+                    ? new Dla.Agent.Reports.ReportService(new Dla.Agent.Reports.ReportGenerator(db.Store))
+                    : null;
+                var ui = Dla.Agent.Link.UiAccess.Create(store.DataDir, log);     // the secret the separate window reads to ask for reports
+                return new LocalStatusLink(AgentLinkConfig.Load(store.DataDir), status, log, sink: sink, media: media, owned: upkeep, reports: reports, ui: ui);
+            },
+            log: log,
+            startup: new StartupRegistration(new RunKeyEntry(), log: log));     // the ONE start-with-Windows entry, set up only after consent
 
-        // The icon is removed on every way out: Quit, logoff or shutdown, a crash, application exit and process exit.
+        // The icon is removed and the link is closed on every way out: Quit, logoff or shutdown, a crash, application exit and process exit.
         using var exitSource = new SystemExitSource();
         using var cleanup = new ExitCleanup(host, exitSource, log);
 

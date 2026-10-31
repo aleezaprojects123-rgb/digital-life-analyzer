@@ -1,14 +1,14 @@
 # Digital Life Analyzer (DLA)
 
-Digital Life Analyzer is an AI time coach for Windows. A browser extension (Chrome and Edge) and a Windows desktop agent (a C# / .NET 10 tray app) record which app or website is active and for how long, on the user's own PC. An on-device AI model labels that time (Study, Work, Entertainment, Social Media or Other). The raw records stay on the PC. Only encrypted summaries are sent to the cloud, where a web dashboard shows reports and offers a distraction forecast, a nudge and a recovery plan. Typing and screenshots are never recorded.
+Digital Life Analyzer is an AI time coach for Windows. A browser extension (Chrome and Edge) records which website is active and for how long, on the user's own PC, and a Windows tray program (C# / .NET 10) receives those records and stores them in a local SQLite database. The flow is: Chrome extension -> C# agent -> SQLite / UI. No desktop applications are tracked. An on-device AI model labels that time (Study, Work, Entertainment, Social Media or Other). The raw records stay on the PC. Only encrypted summaries are sent to the cloud, where a web dashboard shows reports and offers a distraction forecast, a nudge and a recovery plan. Typing and screenshots are never recorded.
 
 ## Folder layout
 
 ```
 digital-life-analyzer/
   device/              Aleeza's side (runs on the user's PC)
-    agent/             Windows desktop agent (C# / .NET 10 tray app)
-    extension/         Chrome and Edge browser extension (Manifest V3)
+    agent/             Windows tray program (C# / .NET 10): receives the extension's events, stores them in SQLite
+    extension/         Chrome and Edge browser extension (Manifest V3): the only activity collector
   cloud/               Fatima's side (backend, database, dashboard)
   contracts/           Shared agreements between the two sides
   .env.example         Template of environment variable names (no real values)

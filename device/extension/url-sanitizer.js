@@ -34,6 +34,8 @@ const MULTI_PART_SUFFIXES = new Set([
   "com.bd", "com.lk", "com.ph", "com.vn", "com.tw", "com.ua", "com.pe", "com.co", "com.np", "edu.au",
 ]);
 
+const INSTAGRAM_ITEM_WORDS = new Set(["reel", "reels", "p", "tv"]);
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Always false for now; later it will check the user's hidden-sites list. The caller skips the page before reading anything. */
@@ -92,12 +94,17 @@ export function sanitizeUrlDetailed(rawUrl) {
   const origin = `${url.protocol}//${host}`;
   const segments = url.pathname.split("/").filter((s) => s.length > 0); // drops the leading slash, trailing slash and "//"
 
+  // On Instagram the segment after /reel/, /reels/, /p/ or /tv/ is the item's code. It is always masked, however harmless it looks
+  // (a code containing "_" or "-" would otherwise slip through). The adapter reads the real code from the real address, in memory only.
+  const isInstagram = host === "instagram.com" || host.endsWith(".instagram.com");
   const cleaned = [];
   let masked = false;
   let previousWasSecretPrefix = false;
+  let previousWasInstagramItem = false;
   for (const segment of segments) {
     const text = decode(segment);
-    const hide = previousWasSecretPrefix || looksSecret(text);
+    const hide = previousWasSecretPrefix || previousWasInstagramItem || looksSecret(text);
+    previousWasInstagramItem = isInstagram && INSTAGRAM_ITEM_WORDS.has(text.toLowerCase());
     if (hide) masked = true;
     cleaned.push(hide ? MASK : segment);
     previousWasSecretPrefix = SECRET_PREFIXES.has(stripExtension(text).toLowerCase());

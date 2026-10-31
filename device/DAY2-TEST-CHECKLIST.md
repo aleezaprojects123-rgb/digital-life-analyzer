@@ -59,7 +59,11 @@ Right-click the tray icon and choose **Tracking: OFF**. Wait up to 10 seconds, t
 
 ### 5. Private window
 
-Open an InPrivate (Edge) or Incognito (Chrome) window and browse. The extension is not allowed there: the count does not grow. (In `edge://extensions` / `chrome://extensions`, "Allow in InPrivate/Incognito" must stay off.)
+First stay on one normal page (for example `https://en.wikipedia.org`) for a few seconds and note the popup count (call it N). Then open an InPrivate (Edge) or Incognito (Chrome) window, browse several pages in it, close it, and return to the normal page.
+
+**Expected:** the count may go up by **1** (the normal page you left has now ended as an event). It must **not** go up again for each page you visit inside the private window, and moving between private pages must not change it. The extension is not allowed in private windows (in `edge://extensions` / `chrome://extensions`, "Allow in InPrivate/Incognito" must be off or unavailable).
+
+**Limit of this check:** the count cannot prove that nothing private was recorded (see "What the popup count means" below). The automatic tests cover that part.
 
 | Result: Edge | Result: Chrome |
 |---|---|
@@ -67,7 +71,9 @@ Open an InPrivate (Edge) or Incognito (Chrome) window and browse. The extension 
 
 ### 6. Internal pages
 
-Visit `edge://settings` (Chrome: `chrome://settings`), the new-tab page and `about:blank`. The count does not grow for them.
+Start on a normal page and note the popup count (N). Then visit `edge://settings` (Chrome: `chrome://settings`), the new-tab page and `about:blank`, moving between them, and return to the normal page.
+
+**Expected:** the count may go up by **1** when you first leave the normal page (that page's event ended). It must **not** go up again while you move between the internal pages. Going back to a normal page starts a new period, and leaving that one later adds 1 again.
 
 | Result: Edge | Result: Chrome |
 |---|---|
@@ -97,6 +103,26 @@ The sanitizer itself is covered by `node --test`. To see it in a real browser yo
 |---|---|---|
 | A YouTube Shorts page produces an event whose url ends in `/shorts/*` (no id, no query) | NOT YET RUN | NOT YET RUN |
 
+## What the popup count means
+
+The popup number is **the number of finished normal-page tracking periods** held in the extension's memory. It is not the number of tab switches or pages visited.
+
+- A period ends when you leave that page: switch tab, navigate in the tab, lose browser focus, or move to a private window or an internal page. Only then does the count go up by one.
+- The page you are on right now is **not** counted yet, so the count lags by one.
+- Private windows and internal pages never create a period, but **leaving a normal page for them ends that page's period, so the count goes up by one**. This is correct, not a leak.
+- The count shows no addresses, so it **cannot prove** that nothing private was recorded. The automatic tests (`node --test`) check that.
+- It covers all normal windows of the browser profile, resets when the browser stops the idle extension, and is hidden while paused or without consent.
+
+### Popup check (after the popup-count fix)
+
+Stay on one normal page (for example `https://en.wikipedia.org`) and do nothing else. Note the count. Open and close the DLA popup 6 times in a row.
+
+**Expected:** the count does not change at all. Then go to a different website: the count goes up by 1. Do this in Edge and in Chrome.
+
+| Result: Edge | Result: Chrome |
+|---|---|
+| NOT YET RUN | NOT YET RUN |
+
 ## Things to expect (not bugs)
 
 - **The count can fall back to 0.** The browser stops an idle extension service worker after about 30 seconds without events, and the events live only in its memory. This is a known Day 2 limit, fixed on Day 3.
@@ -111,3 +137,20 @@ A force-ended agent (Task Manager, stopped debugger) leaves a **dead tray icon**
 ## When you are done
 
 Fill in the results above and tell me which steps failed. Do not commit your own `consent.json`, `agent-link.json` or any key file; they live outside the repository.
+
+## Browser events reach events.jsonl (manual Chrome check, version 0.0.3)
+
+What was wrong: the extension's sender got stuck on its first (empty) run at browser start-up, so no event was ever POSTed. Fixed in 0.0.3.
+Also: leaving for another app now sends the finished page after 3 seconds, and an event the agent permanently rejects (400) no longer blocks the ones behind it.
+
+Steps (no automation is run for you; do these yourself):
+1. Close the old agent (tray icon > Quit). Build and start the agent again: `dotnet run --project device/agent/Dla.Agent`.
+2. Open `chrome://extensions`, press Reload on Digital Life Analyzer. It must say version 0.0.3 and ID facfnlbfamjpolgenifllpjedenekdlb.
+3. Keep the service worker DevTools CLOSED (an open DevTools hides the idle-stop problem).
+4. Visit YouTube, then Google, then GitHub, about 20 seconds each (not more than about 25 seconds without changing tab), then switch to VS Code for 10 seconds.
+5. Look for extension lines:
+   `findstr /C:"\"source\":\"extension\"" devicegent\data\events.jsonl`
+   You should see one line per page, next to the `"source": "agent"` lines, in the same file.
+6. If nothing appears, the agent log shows `Browser event refused: HTTP 400/500 <reason>` for a rejected event, and the first log lines show the exact events file path.
+
+Known limit: a page that is still OPEN when Chrome stops the idle service worker (about 30 seconds with no tab changes) is lost. Finished pages are never lost.

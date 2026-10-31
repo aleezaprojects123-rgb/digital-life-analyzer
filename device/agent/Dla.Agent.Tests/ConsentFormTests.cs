@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using Dla.Agent.Consent;
 using Dla.Agent.Ui;
@@ -100,22 +101,41 @@ public class ConsentTextTests
     private static readonly string Body = ConsentText.Body;
 
     [Fact]
-    public void The_version_is_a_constant_and_starts_at_1()
+    public void The_version_is_a_constant_and_is_2_after_app_names_and_start_with_Windows_were_added_to_the_text()
     {
-        Assert.Equal(1, ConsentText.Version);
+        Assert.Equal(2, ConsentText.Version);
     }
 
     [Fact]
-    public void The_text_says_what_is_recorded_and_that_app_names_and_idle_are_not_active_yet()
+    public void The_text_says_what_is_recorded_websites_and_media_titles_and_no_desktop_programs()
     {
         Assert.Contains("domain", Body);
         Assert.Contains("cleaned-up web address", Body);
         Assert.Contains("page title", Body);
-        Assert.Contains("NOT ACTIVE YET", Body);
-        Assert.Contains("names of the apps you use", Body);
-        Assert.Contains("away or idle", Body);
-        Assert.Contains("planned features. They do not run today", Body);
         Assert.Contains("incognito", Body);
+        Assert.Contains("Nothing about the other programs on this PC is recorded: only websites in Chrome and Edge.", Body);
+        Assert.DoesNotContain("The program you are using", Body);           // the desktop tracker is gone: no program names are recorded
+        Assert.DoesNotContain("WINWORD", Body);
+        Assert.Contains("the title, artist and album that Windows media controls show", Body);
+    }
+
+    [Fact]
+    public void The_text_no_longer_says_app_names_are_not_active_and_does_not_claim_to_record_idle()
+    {
+        Assert.DoesNotContain("planned features", Body);
+        Assert.DoesNotContain("They do not run today", Body);
+        Assert.DoesNotContain("names of the apps you use, and whether you are away or idle, are planned", Body);
+        Assert.DoesNotContain("idle", Body, StringComparison.OrdinalIgnoreCase);       // idle tracking was removed: the text must not claim it
+        Assert.DoesNotContain("away", Body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void The_text_tells_the_user_DLA_can_start_with_Windows_and_how_to_stop_that()
+    {
+        Assert.Contains("can start by itself when you sign in to Windows", Body);
+        Assert.Contains("Quit stops it until your next sign-in", Body);
+        Assert.Contains("Windows Settings > Apps > Startup", Body);
+        Assert.Contains("If you do not accept, or this consent is no longer on record, it does not start with Windows and nothing is recorded.", Body);
     }
 
     [Fact]
@@ -134,12 +154,12 @@ public class ConsentTextTests
     }
 
     [Fact]
-    public void The_page_text_section_is_marked_NOT_ACTIVE_YET_like_app_names_and_idle()
+    public void Only_the_page_text_section_is_still_marked_NOT_ACTIVE_YET()
     {
         var lines = Body.Replace("\r\n", "\n").Split('\n');
         Assert.Contains("TEXT ON THE PAGE (NOT ACTIVE YET)", lines);
-        Assert.Contains("NOT ACTIVE YET", lines);              // the existing section for app names and idle is still there
-        Assert.Contains("planned features. They do not run today", Body);
+        Assert.DoesNotContain("NOT ACTIVE YET", lines);        // the app names section is gone: that feature is active and described above
+        Assert.Single(Regex.Matches(Body, "NOT ACTIVE YET"));
     }
 
     [Fact]
