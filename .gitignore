@@ -35,6 +35,7 @@ appsettings.Development.json
 *.sqlite3
 *.log
 exports/
+device/agent/data/events.jsonl
 
 # --- OS and editor files ---
 .DS_Store
