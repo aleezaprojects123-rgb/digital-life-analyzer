@@ -16,6 +16,19 @@ export function formatDuration(seconds) {
   return `${hours}h ${String(minutes).padStart(2, "0")}m`;
 }
 
+/**
+ * The short form for a label on a bar: just minutes under an hour ("<m>m"), otherwise the same text as formatDuration.
+ * A positive time that rounds to 0 minutes is "<1m" (so a bar that exists never says 0), and 0 is "0m".
+ */
+export function formatDurationShort(seconds) {
+  const safe = Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
+  const text = formatDuration(safe);
+  const minutesOnly = /^0h 0?(\d+m)$/.exec(text);
+  if (!minutesOnly) return text;
+  if (safe > 0 && minutesOnly[1] === "0m") return "<1m";
+  return minutesOnly[1];
+}
+
 /** Reads YYYY-MM-DD as that calendar day (no time zone shifts). Returns null for anything else. */
 export function parseDay(text) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(typeof text === "string" ? text : "");
@@ -24,6 +37,20 @@ export function parseDay(text) {
   const date = new Date(Date.UTC(year, month - 1, day));
   const real = date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
   return real ? { year, month, day, weekday: date.getUTCDay() } : null;
+}
+
+/** This PC's calendar day as YYYY-MM-DD (local time, not UTC). The agent works in the PC's time zone too. */
+export function localToday(now = new Date()) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+/** Whole days from one YYYY-MM-DD to another (negative when the second is earlier). NaN if either is not a real day. */
+export function daysBetween(from, to) {
+  const a = parseDay(from);
+  const b = parseDay(to);
+  if (!a || !b) return NaN;
+  return Math.round((Date.UTC(b.year, b.month - 1, b.day) - Date.UTC(a.year, a.month - 1, a.day)) / 86400000);
 }
 
 /** <Weekday>, <day> <Month> */

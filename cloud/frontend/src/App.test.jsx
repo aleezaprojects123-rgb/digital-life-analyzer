@@ -3,9 +3,20 @@
 // hand. It is not real activity, it is not the design concept's sample, and none of it exists outside this test file.
 // The fake agent answers with the same field names as the real one (Reports/DashboardModels.cs, ReportModels.cs).
 // =====================================================================================================================
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App.jsx";
+
+// TEST DOUBLE for the icon lookup. By default the real lookup is used (the real files in src/assets/platform-icons). A test can set
+// `icons.override` to a made-up { platform: address } map to say exactly which icon files "exist". The addresses are not real files.
+const icons = vi.hoisted(() => ({ override: null }));
+vi.mock("./platformIcons.js", async (importOriginal) => {
+  const real = await importOriginal();
+  return { ...real, platformIconUrl: (platform) => (icons.override ? icons.override[platform] : real.platformIconUrl(platform)) };
+});
 
 const rawToday = (over = {}) => ({
   date: "2026-10-31", // a Saturday
@@ -70,6 +81,15 @@ const rawWeekPrevious = (over = {}) =>
 
 const week = (number, firstDay, lastDay, totalSeconds) => ({ number, firstDay, lastDay, totalSeconds });
 
+// A month's day list (the real agent sends one entry for every day of a month, as for a week). Each week block's total sits on
+// the block's first day, so the days add up to the week blocks.
+const monthDays = (prefix, count, blockTotals) =>
+  Array.from({ length: count }, (_, i) => ({
+    date: `${prefix}-${String(i + 1).padStart(2, "0")}`,
+    dayOfWeek: "",
+    totalSeconds: i % 7 === 0 ? (blockTotals[i / 7] ?? 0) : 0,
+  }));
+
 // this month: 7200 + 14400 + 3600 + 0 + 3600 = 28800 (8h 00m)
 const rawMonthCurrent = (over = {}) =>
   reportBase({
@@ -78,7 +98,7 @@ const rawMonthCurrent = (over = {}) =>
     lastDay: "2026-10-31",
     status: "InProgress",
     totalSeconds: 28800,
-    days: [],
+    days: monthDays("2026-10", 31, [7200, 14400, 3600, 0, 3600]),
     weeks: [
       week(1, "2026-10-01", "2026-10-07", 7200),
       week(2, "2026-10-08", "2026-10-14", 14400),
@@ -97,7 +117,7 @@ const rawMonthPrevious = (over = {}) =>
     lastDay: "2026-09-30",
     status: "Completed",
     totalSeconds: 21600,
-    days: [],
+    days: monthDays("2026-09", 30, [3600, 3600, 7200, 7200, 0]),
     weeks: [
       week(1, "2026-09-01", "2026-09-07", 3600),
       week(2, "2026-09-08", "2026-09-14", 3600),
@@ -141,13 +161,22 @@ const everything = (over = {}) => ({
 
 const OFFLINE = new TypeError("Failed to fetch");
 
+// "Today" is pinned (only the date is faked, the timers are real) so no test depends on the real clock: Saturday 31 October 2026,
+// the 6th day of the test week (Mon 26 Oct to Sun 1 Nov) and the 31st day of the test month.
+const PINNED_NOW = [2026, 9, 31, 12, 0, 0];
+const pinToday = (...parts) => vi.setSystemTime(new Date(...parts));
+
 beforeEach(() => {
   window.localStorage.clear();
   document.documentElement.removeAttribute("data-theme");
+  vi.useFakeTimers({ toFake: ["Date"] });
+  pinToday(...PINNED_NOW);
 });
 
 afterEach(() => {
   cleanup();
+  icons.override = null;
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -157,8 +186,30 @@ const card = (container, key) => {
   expect(el, `card ${key}`).not.toBeNull();
   return { time: el.querySelector(".platform-time").textContent, detail: el.querySelector(".platform-count").textContent };
 };
-const barHeights = (container) => [...container.querySelectorAll(".bar")].map((el) => el.style.height);
-const barLabels = (container) => [...container.querySelectorAll(".bar-day")].map((el) => el.textContent);
+// One entry per bar column: its name, its bar height (null when no bar is drawn) and the time label above the bar (null when none).
+const barColumns = (container) =>
+  [...container.querySelectorAll(".bar-col")].map((col) => ({
+    name: col.querySelector(".bar-day").textContent,
+    height: col.querySelector(".bar")?.style.height ?? null,
+    value: col.querySelector(".bar-value")?.textContent ?? null,
+  }));
+const barHeights = (container) => barColumns(container).map((c) => c.height);
+const barValues = (container) => barColumns(container).map((c) => c.value);
+const barLabels = (container) => barColumns(container).map((c) => c.name);
+const pct = (height) => parseFloat(height);
+
+// The fixed capacities, written out here on purpose (not imported): a bar of 24 hours is a day, 7 x 24 hours is a week block.
+const DAY_SECONDS = 24 * 3600;
+const WEEK_SECONDS = 7 * DAY_SECONDS;
+// Checks every bar against its seconds (null = no bar at all): height = seconds / capacity.
+const expectBars = (container, seconds, capacity) => {
+  const heights = barHeights(container);
+  expect(heights).toHaveLength(seconds.length);
+  seconds.forEach((s, i) => {
+    if (s === null) expect(heights[i], `bar ${i} should not be drawn`).toBeNull();
+    else expect(pct(heights[i]), `bar ${i}`).toBeCloseTo((s / capacity) * 100, 5);
+  });
+};
 const openTab = (name) => fireEvent.click(within(screen.getByRole("navigation")).getByRole("button", { name }));
 
 // ---------------------------------------------------------------------------------------------------- the frame
@@ -263,7 +314,7 @@ describe("Today", () => {
     fakeAgent(everything());
     const { container } = render(<App />);
     await screen.findByText("Saturday, 31 October");
-    const rows = [...container.querySelectorAll(".legend-row")].map((r) => r.textContent);
+    const rows = [...container.querySelectorAll(".legend-row")].map((r) => r.querySelector(".legend-name").textContent + r.querySelector("strong").textContent);
     expect(rows).toEqual(["Instagram45%", "YouTube22%", "TikTok22%", "Facebook0%", "Other sites11%"]);
     expect(container.querySelector(".donut-center")).toHaveTextContent("2h 15m");
     expect(container.querySelector(".donut").style.background).toContain("conic-gradient");
@@ -364,9 +415,7 @@ describe("Weekly", () => {
     expect(container.querySelector(".report-date")).toHaveTextContent("Mon, 26 Oct – Sun, 01 Nov");
     expect(container.querySelector(".report-total .total-time")).toHaveTextContent("6h 00m");
     expect(barLabels(container)).toEqual(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]);
-    expect([...container.querySelectorAll(".bar-time")].map((e) => e.textContent)).toEqual([
-      "2h 00m", "1h 00m", "0h 30m", "0h 00m", "1h 30m", "1h 00m", "0h 00m",
-    ]);
+    expect(barValues(container)).toEqual(["2h 00m", "1h 00m", "30m", null, "1h 30m", "1h 00m", null]);
     expect(card(container, "instagram")).toEqual({ time: "2h 00m", detail: "40 reels" });
     expect(card(container, "youtube")).toEqual({ time: "1h 30m", detail: "12 shorts · 3 videos" });
     expect(card(container, "tiktok")).toEqual({ time: "1h 00m", detail: "25 videos" });
@@ -374,14 +423,17 @@ describe("Weekly", () => {
     expect(card(container, "other")).toEqual({ time: "1h 00m", detail: "Combined time" });
   });
 
-  it("draws bar heights relative to the largest bar", async () => {
+  it("draws each day against 24 hours, and no bar for a day with no time", async () => {
     const { container } = await openWeekly();
-    expect(barHeights(container)).toEqual(["100%", "50%", "25%", "0%", "75%", "50%", "0%"]);
+    expectBars(container, [7200, 3600, 1800, null, 5400, 3600, null], DAY_SECONDS);
+    expect(pct(barHeights(container)[0])).toBeCloseTo(8.3333, 3); // 2 hours of 24
+    expect(container.querySelectorAll(".bar")).toHaveLength(5);
+    expect(container.querySelectorAll(".bar-col")).toHaveLength(7); // the empty days still have their name
   });
 
   it("compares with the previous week, fetched from the previous-week route", async () => {
     const { container, fn } = await openWeekly();
-    expect(container.querySelector(".comparison")).toHaveTextContent("+2h 00m vs last week");
+    expect(container.querySelector(".comparison")).toHaveTextContent("+2h 00m vs the same days last week");
     expect(container.querySelector(".comparison")).toHaveAttribute("data-direction", "up");
     expect(fn.mock.calls.map((c) => c[0])).toContain(URLS.weekPrevious);
     expect(container.querySelector(".comparison-note")).toHaveTextContent("still in progress");
@@ -394,10 +446,11 @@ describe("Weekly", () => {
     expect(container.querySelector(".status")).toHaveTextContent("Completed");
     expect(container.querySelector(".report-date")).toHaveTextContent("Mon, 19 Oct – Sun, 25 Oct");
     expect(container.querySelector(".report-total .total-time")).toHaveTextContent("4h 00m");
-    expect(barHeights(container)).toEqual(["100%", "100%", "100%", "100%", "0%", "0%", "0%"]);
-    expect(container.querySelector(".comparison")).toHaveTextContent("−2h 00m vs this week");
+    expectBars(container, [3600, 3600, 3600, 3600, null, null, null], DAY_SECONDS); // one hour of 24 each, the same scale as this week
+    // this week is still in progress, so last week is compared with the same first 6 days of this week
+    expect(container.querySelector(".comparison")).toHaveTextContent("−2h 00m vs the same days this week");
     expect(container.querySelector(".comparison")).toHaveAttribute("data-direction", "down");
-    expect(container.querySelector(".comparison-note")).toBeNull();
+    expect(container.querySelector(".comparison-note")).toHaveTextContent("only the first 6 days of each week are compared");
     expect(fn.mock.calls.length).toBe(calls);
     fireEvent.click(screen.getByRole("button", { name: "This week" }));
     expect(container.querySelector(".status")).toHaveTextContent("In progress");
@@ -426,9 +479,10 @@ describe("Weekly", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Can't reach the Digital Life Analyzer app on this PC");
   });
 
-  it("says there is no change when both weeks are the same", async () => {
-    const { container } = await openWeekly(everything({ [URLS.weekPrevious]: [200, rawWeekPrevious({ totalSeconds: 21600 })] }));
-    expect(container.querySelector(".comparison")).toHaveTextContent("No change vs last week");
+  it("says there is no change when the same days of both weeks are the same", async () => {
+    const same = rawWeekPrevious({ totalSeconds: 21600, days: daysOf(LAST_WEEK, [7200, 3600, 1800, 0, 5400, 3600, 0]) });
+    const { container } = await openWeekly(everything({ [URLS.weekPrevious]: [200, same] }));
+    expect(container.querySelector(".comparison")).toHaveTextContent("No change vs the same days last week");
     expect(container.querySelector(".comparison")).toHaveAttribute("data-direction", "same");
   });
 
@@ -480,14 +534,17 @@ describe("Monthly", () => {
     expect(card(container, "youtube").detail).toBe("12 shorts · 3 videos");
   });
 
-  it("draws the week blocks relative to the largest", async () => {
+  it("draws each week block against 168 hours, with no bar for an empty block", async () => {
     const { container } = await openMonthly();
-    expect(barHeights(container)).toEqual(["50%", "100%", "25%", "0%", "25%"]);
+    expectBars(container, [7200, 14400, 3600, null, 3600], WEEK_SECONDS);
+    expect(barValues(container)).toEqual(["2h 00m", "4h 00m", "1h 00m", null, "1h 00m"]);
   });
 
-  it("compares with the previous month", async () => {
+  it("compares the days gone by with the same first days of the previous month", async () => {
     const { container } = await openMonthly();
-    expect(container.querySelector(".comparison")).toHaveTextContent("+2h 00m vs last month");
+    // 31 days have gone by, but last month had 30: the first 30 days of both are compared
+    expect(container.querySelector(".comparison")).toHaveTextContent("+2h 00m vs the same days last month");
+    expect(container.querySelector(".comparison-note")).toHaveTextContent("only the first 30 days of each month are compared");
   });
 
   it("switches to the previous month, which is completed", async () => {
@@ -496,8 +553,8 @@ describe("Monthly", () => {
     expect(container.querySelector(".status")).toHaveTextContent("Completed");
     expect(container.querySelector(".report-date")).toHaveTextContent("Sep 1 – Sep 30");
     expect(container.querySelector(".report-total .total-time")).toHaveTextContent("6h 00m");
-    expect(barHeights(container)).toEqual(["50%", "50%", "100%", "100%", "0%"]);
-    expect(container.querySelector(".comparison")).toHaveTextContent("−2h 00m vs this month");
+    expectBars(container, [3600, 3600, 7200, 7200, null], WEEK_SECONDS);
+    expect(container.querySelector(".comparison")).toHaveTextContent("−2h 00m vs the same days this month");
   });
 
   it("hides the comparison when there is no previous month", async () => {
@@ -517,6 +574,454 @@ describe("Monthly (empty month)", () => {
     expect(await screen.findByRole("heading", { name: "Nothing tracked yet" })).toBeInTheDocument();
     expect(container.querySelector(".bar-chart")).toBeNull();
     expect(container.querySelector(".report-date")).toHaveTextContent("Oct 1 – Oct 31");
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------- the bar scale
+
+describe("the bar scale (seconds / capacity: 24 hours for a day, 168 hours for a week block)", () => {
+  async function openWeeklyWithDays(totals, totalOverride) {
+    const days = daysOf(THIS_WEEK, totals);
+    const total = totalOverride ?? totals.reduce((a, b) => a + b, 0);
+    fakeAgent(everything({ [URLS.weekCurrent]: [200, rawWeekCurrent({ totalSeconds: total, days })] }));
+    const view = render(<App />);
+    await screen.findByText("Saturday, 31 October");
+    openTab("Weekly");
+    await screen.findByText("Time per day");
+    return view;
+  }
+
+  async function openMonthlyWithWeeks(totals) {
+    const dates = [["2026-10-01", "2026-10-07"], ["2026-10-08", "2026-10-14"], ["2026-10-15", "2026-10-21"], ["2026-10-22", "2026-10-28"], ["2026-10-29", "2026-10-31"]];
+    const weeks = totals.map((seconds, i) => week(i + 1, dates[i][0], dates[i][1], seconds));
+    fakeAgent(everything({ [URLS.monthCurrent]: [200, rawMonthCurrent({ totalSeconds: totals.reduce((a, b) => a + b, 0), weeks })] }));
+    const view = render(<App />);
+    await screen.findByText("Saturday, 31 October");
+    openTab("Monthly");
+    await screen.findByText("Time per week block");
+    return view;
+  }
+
+  const HOUR = 3600;
+
+  it("a day of 1h 23m is about 5.8 percent of the chart height, labelled with its real time", async () => {
+    const { container } = await openWeeklyWithDays([0, 0, 83 * 60, 0, 0, 0, 0]);
+    const wednesday = barColumns(container)[2];
+    expect(pct(wednesday.height)).toBeGreaterThan(5.7);
+    expect(pct(wednesday.height)).toBeLessThan(5.8);
+    expect(pct(wednesday.height)).toBeCloseTo(5.76, 2);
+    expect(wednesday.value).toBe("1h 23m");
+  });
+
+  it("a day of 12 hours is exactly half the chart", async () => {
+    const { container } = await openWeeklyWithDays([0, 12 * HOUR, 0, 0, 0, 0, 0]);
+    expect(barColumns(container)[1]).toMatchObject({ name: "Tue", height: "50%", value: "12h 00m" });
+  });
+
+  it("a day of 24 hours is full height", async () => {
+    const { container } = await openWeeklyWithDays([0, 0, 0, 0, 0, 24 * HOUR, 0]);
+    expect(barColumns(container)[5]).toMatchObject({ name: "Sat", height: "100%", value: "24h 00m" });
+  });
+
+  it("a day of 3 minutes has a tiny but visible bar with the label 3m", async () => {
+    const { container } = await openWeeklyWithDays([0, 0, 180, 0, 0, 0, 0]);
+    const columns = barColumns(container);
+    expect(columns.filter((c) => c.height !== null)).toHaveLength(1);
+    const tiny = columns[2];
+    expect(pct(tiny.height)).toBeGreaterThan(0);
+    expect(pct(tiny.height)).toBeLessThan(0.5);
+    expect(pct(tiny.height)).toBeCloseTo((180 / 86400) * 100, 6);
+    expect(tiny.value).toBe("3m");
+    expect(container.querySelector(".bar")).toBeInTheDocument();
+  });
+
+  it("the stylesheet keeps a tiny bar visible (a minimum height on the bar)", () => {
+    const css = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "styles.css"), "utf8");
+    const rule = /(^|\n)\.bar \{([^}]*)\}/.exec(css);
+    expect(rule, "a .bar rule").not.toBeNull();
+    expect(rule[2]).toMatch(/min-height:\s*2px/);
+  });
+
+  it("the time label is above the bar and never inside it", async () => {
+    const { container } = await openWeeklyWithDays([0, 0, 180, 0, 0, 0, 0]);
+    const bar = container.querySelector(".bar");
+    const value = container.querySelector(".bar-value");
+    expect(value).toHaveTextContent("3m");
+    expect(bar.contains(value)).toBe(false);
+    expect(value.parentElement).toBe(bar.parentElement); // side by side in the same track, the label placed from the bar's top
+    expect(value.style.bottom).toMatch(/^calc\(.+% \+ \d+px\)$/); // its bottom edge is a little above the top of the bar
+    expect(value.textContent).toBe("3m");
+    expect(bar.textContent).toBe("");
+  });
+
+  it("a week block of 42 hours is a quarter of the monthly chart", async () => {
+    const { container } = await openMonthlyWithWeeks([0, 42 * HOUR, 0, 0, 0]);
+    expect(barColumns(container)[1]).toMatchObject({ name: "Week 2", height: "25%", value: "42h 00m" });
+  });
+
+  it("a week block of 168 hours is full height and 84 hours is half", async () => {
+    const { container } = await openMonthlyWithWeeks([168 * HOUR, 84 * HOUR, 0, 0, 0]);
+    expect(barHeights(container)).toEqual(["100%", "50%", null, null, null]);
+    expect(barValues(container)).toEqual(["168h 00m", "84h 00m", null, null, null]);
+  });
+
+  it("a 3-minute week block is tiny but drawn, and a 5-hour one is still small", async () => {
+    const { container } = await openMonthlyWithWeeks([0, 180, 0, 5 * HOUR, 0]);
+    expect(pct(barHeights(container)[1])).toBeCloseTo((180 / 604800) * 100, 6);
+    expect(pct(barHeights(container)[3])).toBeCloseTo((5 * HOUR / 604800) * 100, 6);
+    expect(pct(barHeights(container)[3])).toBeLessThan(5);
+    expect(barValues(container)).toEqual([null, "3m", null, "5h 00m", null]);
+  });
+
+  it("data above the capacity is capped at full height, and the label still shows the real time", async () => {
+    const day = await openWeeklyWithDays([0, 30 * HOUR, 0, 0, 0, 0, 0]);
+    expect(barColumns(day.container)[1]).toMatchObject({ height: "100%", value: "30h 00m" });
+    cleanup();
+    const block = await openMonthlyWithWeeks([0, 0, 200 * HOUR, 0, 0]);
+    expect(barColumns(block.container)[2]).toMatchObject({ height: "100%", value: "200h 00m" });
+  });
+
+  it("the weekly gridline labels are 0, 6h, 12h, 18h and 24h, each at its own height", async () => {
+    const { container } = await openWeeklyWithDays([0, 6 * HOUR, 0, 0, 0, 0, 0]);
+    expect([...container.querySelectorAll(".axis-label")].map((e) => e.textContent)).toEqual(["0m", "6h 00m", "12h 00m", "18h 00m", "24h 00m"]);
+    expect([...container.querySelectorAll(".axis-label")].map((e) => e.style.bottom)).toEqual(["0%", "25%", "50%", "75%", "100%"]);
+    expect([...container.querySelectorAll(".gridline")].map((e) => e.style.bottom)).toEqual(["0%", "25%", "50%", "75%", "100%"]);
+    // a bar of exactly 6 hours reaches the 6h line
+    expect(barHeights(container)[1]).toBe("25%");
+  });
+
+  it("the monthly gridline labels are 0, 42h, 84h, 126h and 168h", async () => {
+    const { container } = await openMonthlyWithWeeks([0, 42 * HOUR, 0, 0, 0]);
+    expect([...container.querySelectorAll(".axis-label")].map((e) => e.textContent)).toEqual(["0m", "42h 00m", "84h 00m", "126h 00m", "168h 00m"]);
+    expect([...container.querySelectorAll(".gridline")]).toHaveLength(5);
+  });
+
+  it("the gridlines and their labels are decoration for the eye: hidden from screen readers, and no bar is inside them", async () => {
+    const { container } = await openWeeklyWithDays([0, 6 * HOUR, 0, 0, 0, 0, 0]);
+    expect(container.querySelector(".axis")).toHaveAttribute("aria-hidden", "true");
+    expect(container.querySelector(".gridlines")).toHaveAttribute("aria-hidden", "true");
+    expect(container.querySelector(".gridlines .bar")).toBeNull();
+    expect(container.querySelector(".bar-chart")).toHaveAttribute("role", "list");
+  });
+
+  it("there is no element at all for a day with no time", async () => {
+    const { container } = await openWeeklyWithDays([0, 7200, 0, 0, 0, 0, 0]);
+    expect(container.querySelectorAll(".bar")).toHaveLength(1);
+    expect(container.querySelectorAll(".bar-value")).toHaveLength(1);
+    expect(container.querySelectorAll(".bar-col")).toHaveLength(7); // the days keep their names
+  });
+
+  it("data that is all zero draws no bars and no labels, but keeps the gridlines", async () => {
+    // (a week with no time at all shows 'Nothing tracked yet' instead of a chart; here the total is above 0 but no day has any
+    // time, which can only come from inconsistent data, and must still draw nothing)
+    const { container } = await openWeeklyWithDays([0, 0, 0, 0, 0, 0, 0], 600);
+    expect(container.querySelectorAll(".bar")).toHaveLength(0);
+    expect(container.querySelectorAll(".bar-value")).toHaveLength(0);
+    expect(container.querySelectorAll(".bar-col")).toHaveLength(7);
+    expect(container.querySelectorAll(".gridline")).toHaveLength(5);
+  });
+
+  it("a week with no time at all still shows the empty state, and no chart", async () => {
+    fakeAgent(everything({ [URLS.weekCurrent]: [200, rawWeekCurrent({ totalSeconds: 0, otherPlatformsSeconds: 0, platforms: [], content: [], days: daysOf(THIS_WEEK, [0, 0, 0, 0, 0, 0, 0]) })] }));
+    const { container } = render(<App />);
+    await screen.findByText("Saturday, 31 October");
+    openTab("Weekly");
+    expect(await screen.findByRole("heading", { name: "Nothing tracked yet" })).toBeInTheDocument();
+    expect(container.querySelectorAll(".bar, .bar-value, .bar-col, .gridline, .axis-label")).toHaveLength(0);
+  });
+
+  it("a month with no time at all still shows the empty state, and no chart", async () => {
+    const quiet = rawMonthCurrent({ totalSeconds: 0, otherPlatformsSeconds: 0, weeks: [], platforms: [], content: [] });
+    fakeAgent(everything({ [URLS.monthCurrent]: [200, quiet] }));
+    const { container } = render(<App />);
+    await screen.findByText("Saturday, 31 October");
+    openTab("Monthly");
+    expect(await screen.findByRole("heading", { name: "Nothing tracked yet" })).toBeInTheDocument();
+    expect(container.querySelector(".chart")).toBeNull();
+  });
+
+  it("shows the real times: minutes alone under an hour, hours and two-digit minutes from an hour", async () => {
+    const { container } = await openWeeklyWithDays([0, 180, 3900, 3600, 7500, 59 * 60, 0]);
+    expect(barValues(container)).toEqual([null, "3m", "1h 05m", "1h 00m", "2h 05m", "59m", null]);
+  });
+
+  it("shows <1m for a bar that exists but is under half a minute", async () => {
+    const { container } = await openWeeklyWithDays([0, 20, 0, 0, 0, 0, 0]);
+    expect(barValues(container)[1]).toBe("<1m");
+    expect(pct(barHeights(container)[1])).toBeGreaterThan(0);
+  });
+
+  it("does not show a time under the bars (the label is above the bar)", async () => {
+    const { container } = await openWeeklyWithDays([7200, 0, 0, 0, 0, 0, 0]);
+    expect(container.querySelector(".bar-time")).toBeNull();
+    expect(container.querySelectorAll(".bar-value")).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------- a fair comparison
+
+describe("the comparison while a period is still in progress", () => {
+  // Last week had a very busy Sunday (36000 s). This week has not reached its Sunday yet.
+  const busySunday = () => rawWeekPrevious({ totalSeconds: 50400, days: daysOf(LAST_WEEK, [3600, 3600, 3600, 3600, 0, 0, 36000]) });
+
+  async function openWeekly(routes) {
+    fakeAgent(routes);
+    const view = render(<App />);
+    await screen.findByText("Saturday, 31 October");
+    openTab("Weekly");
+    await screen.findByText("Time per day");
+    return view;
+  }
+
+  it("compares the days gone by with the same first days of last week, not with the whole of it", async () => {
+    // this week so far: 21600 (6 days gone by). First 6 days of last week: 14400. The whole of last week: 50400.
+    const { container } = await openWeekly(everything({ [URLS.weekPrevious]: [200, busySunday()] }));
+    expect(container.querySelector(".comparison")).toHaveTextContent("+2h 00m vs the same days last week");
+    expect(container.querySelector(".comparison")).toHaveAttribute("data-direction", "up");
+  });
+
+  it("says so in the small note", async () => {
+    const { container } = await openWeekly(everything({ [URLS.weekPrevious]: [200, busySunday()] }));
+    expect(container.querySelector(".comparison-note")).toHaveTextContent(
+      "This week is still in progress, so only the first 6 days of each week are compared.",
+    );
+    expect(container.querySelector(".comparison-note").textContent).not.toContain("whole of last");
+  });
+
+  it("uses 1 day on the first day of the week", async () => {
+    pinToday(2026, 9, 26, 9, 0, 0); // Monday 26 October: this week's first day (7200 s) against last week's first day (3600 s)
+    const { container } = await openWeekly(everything({ [URLS.weekPrevious]: [200, busySunday()] }));
+    expect(container.querySelector(".comparison")).toHaveTextContent("+1h 00m vs the same days last week");
+    expect(container.querySelector(".comparison-note")).toHaveTextContent("only the first day of each week is compared.");
+  });
+
+  it("grows by a day when the date moves on", async () => {
+    pinToday(2026, 9, 28, 9, 0, 0); // Wednesday: 3 days. This week 12600, last week's first 3 days 10800.
+    const { container } = await openWeekly(everything({ [URLS.weekPrevious]: [200, busySunday()] }));
+    expect(container.querySelector(".comparison")).toHaveTextContent("+0h 30m vs the same days last week");
+    expect(container.querySelector(".comparison-note")).toHaveTextContent("only the first 3 days of each week are compared.");
+  });
+
+  it("is the same fair comparison seen from last week (the days it shows against the same days of this week)", async () => {
+    const { container } = await openWeekly(everything({ [URLS.weekPrevious]: [200, busySunday()] }));
+    fireEvent.click(screen.getByRole("button", { name: "Previous week" }));
+    expect(container.querySelector(".comparison")).toHaveTextContent("−2h 00m vs the same days this week");
+    expect(container.querySelector(".comparison")).toHaveAttribute("data-direction", "down");
+    expect(container.querySelector(".comparison-note")).toHaveTextContent("only the first 6 days of each week are compared.");
+  });
+
+  it("hides the comparison when last week has no time in those first days", async () => {
+    const onlySunday = rawWeekPrevious({ totalSeconds: 7200, days: daysOf(LAST_WEEK, [0, 0, 0, 0, 0, 0, 7200]) });
+    const { container } = await openWeekly(everything({ [URLS.weekPrevious]: [200, onlySunday] }));
+    expect(container.querySelector(".report-total .total-time")).toHaveTextContent("6h 00m");
+    expect(container.querySelector(".comparison")).toBeNull();
+    expect(container.querySelector(".comparison-note")).toBeNull();
+  });
+
+  it("falls back to the whole of last week, and says so, when the date is outside this week", async () => {
+    pinToday(2026, 11, 25, 12, 0, 0); // 25 December: the PC's date and the report disagree, so the fair days can not be told
+    const { container } = await openWeekly(everything({ [URLS.weekPrevious]: [200, busySunday()] }));
+    expect(container.querySelector(".comparison")).toHaveTextContent("−8h 00m vs last week");
+    expect(container.querySelector(".comparison-note")).toHaveTextContent("compared with the whole of last week");
+  });
+
+  it("falls back to the whole of last week when a report has no day list", async () => {
+    const { container } = await openWeekly(everything({ [URLS.weekPrevious]: [200, rawWeekPrevious({ days: [] })] }));
+    expect(container.querySelector(".comparison")).toHaveTextContent("+2h 00m vs last week");
+    expect(container.querySelector(".comparison-note")).toHaveTextContent("compared with the whole of last week");
+  });
+
+  it("monthly: compares the first days of this month with the same first days of last month", async () => {
+    pinToday(2026, 9, 15, 12, 0, 0); // 15 October: 15 days gone by. October so far: 7200 + 14400 + 3600 = 25200. September's first 15 days: 3600 + 3600 + 7200 = 14400.
+    fakeAgent(everything());
+    const { container } = render(<App />);
+    await screen.findByText("Saturday, 31 October");
+    openTab("Monthly");
+    await screen.findByText("Time per week block");
+    expect(container.querySelector(".comparison")).toHaveTextContent("+3h 00m vs the same days last month");
+    expect(container.querySelector(".comparison-note")).toHaveTextContent("only the first 15 days of each month are compared.");
+  });
+
+  it("monthly: keeps the whole-month comparison when the agent sends no per-day list", async () => {
+    fakeAgent(everything({ [URLS.monthCurrent]: [200, rawMonthCurrent({ days: [] })] }));
+    const { container } = render(<App />);
+    await screen.findByText("Saturday, 31 October");
+    openTab("Monthly");
+    await screen.findByText("Time per week block");
+    expect(container.querySelector(".comparison")).toHaveTextContent("+2h 00m vs last month");
+    expect(container.querySelector(".comparison-note")).toHaveTextContent("compared with the whole of last month");
+  });
+
+  it("a period that is no longer in progress is compared as a whole", async () => {
+    const finished = rawWeekCurrent({ status: "Completed" });
+    const { container } = await openWeekly(everything({ [URLS.weekCurrent]: [200, finished], [URLS.weekPrevious]: [200, busySunday()] }));
+    expect(container.querySelector(".comparison")).toHaveTextContent("−8h 00m vs last week");
+    expect(container.querySelector(".comparison-note")).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------- platform icons
+
+describe("platform icons", () => {
+  // TEST DATA: made-up addresses of icon files that "exist" in a test (they are not real files)
+  const FILES = {
+    instagram: "/test-fixture/instagram.png",
+    youtube: "/test-fixture/youtube.svg",
+    tiktok: "/test-fixture/tiktok.png",
+    facebook: "/test-fixture/facebook.png",
+  };
+  const NAMES = { instagram: "Instagram", youtube: "YouTube", tiktok: "TikTok", facebook: "Facebook", other: "Other sites" };
+  const GENERIC = { instagram: "◎", youtube: "▶", tiktok: "♪", facebook: "◈", other: "▦" };
+  const LEGEND_ORDER = ["instagram", "youtube", "tiktok", "facebook", "other"];
+
+  async function openToday() {
+    fakeAgent(everything());
+    const view = render(<App />);
+    await screen.findByText("Saturday, 31 October");
+    return view;
+  }
+  const cardOf = (container, key, scope = "") => container.querySelector(`${scope} [data-platform="${key}"]`.trim());
+  const legendRows = (container) => [...container.querySelectorAll(".legend-row")];
+
+  it("shows each platform's icon file next to its name on the Today cards", async () => {
+    icons.override = FILES;
+    const { container } = await openToday();
+    for (const key of ["instagram", "youtube", "tiktok", "facebook"]) {
+      const top = cardOf(container, key).querySelector(".platform-top");
+      const img = top.querySelector("img.platform-img");
+      expect(img, `${key} icon`).not.toBeNull();
+      expect(img).toHaveAttribute("src", FILES[key]);
+      expect(top.querySelector(".platform-name")).toHaveTextContent(NAMES[key]); // the name stays visible, next to the icon
+      expect(top.querySelector(".platform-glyph")).toBeNull();
+    }
+  });
+
+  it("shows them in the donut legend, next to each name", async () => {
+    icons.override = FILES;
+    const { container } = await openToday();
+    const rows = legendRows(container);
+    expect(rows).toHaveLength(5);
+    LEGEND_ORDER.slice(0, 4).forEach((key, i) => {
+      expect(rows[i].querySelector("img.platform-img")).toHaveAttribute("src", FILES[key]);
+      expect(rows[i].querySelector(".legend-name")).toHaveTextContent(NAMES[key]);
+    });
+  });
+
+  it("shows them on the Weekly and Monthly cards too", async () => {
+    icons.override = FILES;
+    fakeAgent(everything());
+    const { container } = render(<App />);
+    await screen.findByText("Saturday, 31 October");
+    openTab("Weekly");
+    await screen.findByText("Time per day");
+    for (const key of ["instagram", "youtube", "tiktok", "facebook"]) {
+      expect(cardOf(container, key, ".platforms-week").querySelector("img.platform-img")).toHaveAttribute("src", FILES[key]);
+    }
+    openTab("Monthly");
+    await screen.findByText("Time per week block");
+    for (const key of ["instagram", "youtube", "tiktok", "facebook"]) {
+      expect(cardOf(container, key, ".platforms-week").querySelector("img.platform-img")).toHaveAttribute("src", FILES[key]);
+      expect(cardOf(container, key, ".platforms-week").querySelector(".platform-name")).toHaveTextContent(NAMES[key]);
+    }
+  });
+
+  it("keeps the generic icon for a platform whose file is missing", async () => {
+    icons.override = { youtube: FILES.youtube }; // only YouTube has a file
+    const { container } = await openToday();
+    expect(cardOf(container, "youtube").querySelector("img.platform-img")).toHaveAttribute("src", FILES.youtube);
+    for (const key of ["instagram", "tiktok", "facebook"]) {
+      const top = cardOf(container, key).querySelector(".platform-top");
+      expect(top.querySelector("img"), `${key} has no picture`).toBeNull();
+      expect(top.querySelector(".platform-glyph")).toHaveTextContent(GENERIC[key]);
+      expect(top.querySelector(".platform-name")).toHaveTextContent(NAMES[key]);
+    }
+    const rows = legendRows(container);
+    expect(rows[0].querySelector("img")).toBeNull(); // Instagram, in the legend
+    expect(rows[0].querySelector(".platform-glyph")).toHaveTextContent(GENERIC.instagram);
+    expect(rows[1].querySelector("img")).toHaveAttribute("src", FILES.youtube);
+  });
+
+  it("works with no icon files at all: every platform shows its generic icon", async () => {
+    icons.override = {};
+    const { container } = await openToday();
+    expect(container.querySelectorAll("img")).toHaveLength(0);
+    for (const key of LEGEND_ORDER) {
+      expect(cardOf(container, key).querySelector(".platform-glyph")).toHaveTextContent(GENERIC[key]);
+    }
+    expect(container.querySelector(".total-time")).toHaveTextContent("2h 15m"); // the screen is otherwise the same
+  });
+
+  it("'Other sites' uses the generic icon, even if someone puts a file for it in the folder", async () => {
+    icons.override = { ...FILES, other: "/test-fixture/other.png" };
+    const { container } = await openToday();
+    const other = cardOf(container, "other");
+    expect(other.querySelector("img")).toBeNull();
+    expect(other.querySelector(".platform-glyph")).toHaveTextContent(GENERIC.other);
+    expect(other.querySelector(".platform-name")).toHaveTextContent("Other sites");
+    expect(legendRows(container)[4].querySelector("img")).toBeNull();
+    expect(legendRows(container)[4].querySelector(".platform-glyph")).toHaveTextContent(GENERIC.other);
+    expect(container.innerHTML).not.toContain("other.png");
+  });
+
+  it("'Other sites' uses the generic icon in the real build too (no file for it)", async () => {
+    const { container } = await openToday(); // icons.override is null: the real lookup and the real folder
+    expect(cardOf(container, "other").querySelector("img")).toBeNull();
+    expect(cardOf(container, "other").querySelector(".platform-glyph")).toHaveTextContent(GENERIC.other);
+  });
+
+  it("uses the real files that are in src/assets/platform-icons, and the generic icon for any that are not", async () => {
+    const dirFiles = fs.readdirSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "assets", "platform-icons"));
+    const have = (key) => dirFiles.some((f) => new RegExp(`^${key}\\.(png|svg)$`, "i").test(f));
+    const { container } = await openToday();
+    for (const key of ["instagram", "youtube", "tiktok", "facebook"]) {
+      const top = cardOf(container, key).querySelector(".platform-top");
+      if (have(key)) expect(top.querySelector("img"), `${key} has a real file`).toHaveAttribute("src", expect.stringContaining(key));
+      else expect(top.querySelector(".platform-glyph"), `${key} has no file`).toHaveTextContent(GENERIC[key]);
+    }
+  });
+
+  it("falls back to the generic icon when a file fails to load", async () => {
+    icons.override = FILES;
+    const { container } = await openToday();
+    const img = cardOf(container, "instagram").querySelector("img");
+    fireEvent.error(img);
+    expect(cardOf(container, "instagram").querySelector("img")).toBeNull();
+    expect(cardOf(container, "instagram").querySelector(".platform-glyph")).toHaveTextContent(GENERIC.instagram);
+    expect(cardOf(container, "youtube").querySelector("img")).not.toBeNull(); // the others are not affected
+  });
+
+  it("icons are decoration: empty alt text, hidden from screen readers, and the name is still text", async () => {
+    icons.override = FILES;
+    const { container } = await openToday();
+    const images = [...container.querySelectorAll("img")];
+    expect(images).toHaveLength(8); // four on the cards, four in the legend
+    for (const img of images) {
+      expect(img.getAttribute("alt")).toBe("");
+      expect(img.closest("[aria-hidden='true']")).not.toBeNull();
+    }
+    expect(screen.queryAllByRole("img", { name: /instagram|youtube|tiktok|facebook/i })).toHaveLength(0);
+    for (const key of ["instagram", "youtube", "tiktok", "facebook"]) expect(screen.getAllByText(NAMES[key]).length).toBeGreaterThan(0);
+  });
+
+  it("sizes every icon the same: 20px on a card, 16px in the legend, in a fixed box", async () => {
+    icons.override = FILES;
+    const { container } = await openToday();
+    const sizes = (selector) => [...container.querySelectorAll(selector)].map((img) => `${img.getAttribute("width")}x${img.getAttribute("height")}`);
+    expect(new Set(sizes(".platform-top img"))).toEqual(new Set(["20x20"]));
+    expect(new Set(sizes(".legend-row img"))).toEqual(new Set(["16x16"]));
+    const css = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "styles.css"), "utf8");
+    expect(css).toMatch(/\.platform-img \{[^}]*object-fit:\s*contain/);
+    expect(css).toMatch(/\.platform-icon \{[^}]*width:\s*28px;[^}]*height:\s*28px/);
+    expect(css).toMatch(/\.legend-icon \{[^}]*width:\s*18px;[^}]*height:\s*18px/);
+  });
+
+  it("makes no request for an icon: the pictures are local files, so only the agent's routes are fetched", async () => {
+    icons.override = FILES;
+    const fn = fakeAgent(everything());
+    render(<App />);
+    await screen.findByText("Saturday, 31 October");
+    expect(fn.mock.calls.map((c) => c[0])).toEqual([URLS.today]);
+    expect(document.querySelectorAll("img[src^='http'], img[src^='//']")).toHaveLength(0);
   });
 });
 

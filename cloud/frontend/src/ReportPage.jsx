@@ -3,8 +3,8 @@ import {
   BarChart, Comparison, EmptyState, ErrorState, LoadingState, PageHead, PlatformCard, StatusBadge,
 } from "./components.jsx";
 import { fetchReport } from "./dataSource.js";
-import { formatDuration, formatMonthRange, formatWeekRange, weekdayShort } from "./format.js";
-import { cardsFromReport, compareTotals } from "./model.js";
+import { formatDuration, formatMonthRange, formatWeekRange, localToday, weekdayShort } from "./format.js";
+import { cardsFromReport, comparePeriods, MONTHLY_CHART_CAPACITY_SECONDS, WEEKLY_CHART_CAPACITY_SECONDS } from "./model.js";
 import { useAgentData } from "./useAgentData.js";
 
 const KINDS = {
@@ -13,6 +13,7 @@ const KINDS = {
     title: "Weekly report",
     unit: "week",
     chartTitle: "Time per day",
+    capacity: WEEKLY_CHART_CAPACITY_SECONDS, // a full bar is 24 hours
     range: formatWeekRange,
     bars: (report) =>
       report.days.map((d) => ({
@@ -27,6 +28,7 @@ const KINDS = {
     title: "Monthly report",
     unit: "month",
     chartTitle: "Time per week block",
+    capacity: MONTHLY_CHART_CAPACITY_SECONDS, // a full bar is 7 days (168 hours)
     range: formatMonthRange,
     bars: (report) =>
       report.weeks.map((w) => ({
@@ -82,10 +84,13 @@ export default function ReportPage({ kind }) {
   const range = <div className="report-date">{words.range(shown.firstDay, shown.lastDay)}</div>;
   if (!(shown.totalSeconds > 0)) return <section>{head}{controls}{range}<EmptyState /></section>;
 
-  // The comparison is with the other period; it is hidden when that one is missing or empty.
+  // The comparison is with the other period; it is hidden when that one is missing or empty. While one of the two is still
+  // in progress it is a fair one: only the first days of both are compared (see comparePeriods).
   const other = shownIsPrevious ? current : previous.report;
-  const comparison = other ? compareTotals(shown.totalSeconds, other.totalSeconds) : null;
-  const comparisonLabel = shownIsPrevious ? `vs this ${words.unit}` : `vs last ${words.unit}`;
+  const { comparison, days: fairDays } = other ? comparePeriods(shown, other, localToday()) : { comparison: null, days: null };
+  const comparisonLabel = fairDays
+    ? `vs the same days ${shownIsPrevious ? "this" : "last"} ${words.unit}`
+    : `vs ${shownIsPrevious ? "this" : "last"} ${words.unit}`;
   const cards = cardsFromReport(shown);
 
   return (
@@ -100,7 +105,7 @@ export default function ReportPage({ kind }) {
         </article>
         <article className="card">
           <h2>{words.chartTitle}</h2>
-          <BarChart bars={words.bars(shown)} />
+          <BarChart bars={words.bars(shown)} capacitySeconds={words.capacity} />
         </article>
       </div>
       <div className="grid platforms-week">
@@ -109,7 +114,13 @@ export default function ReportPage({ kind }) {
         ))}
       </div>
       {comparison ? <Comparison comparison={comparison} label={comparisonLabel} /> : null}
-      {comparison && shown.status === "InProgress" ? (
+      {comparison && fairDays ? (
+        <p className="subtle comparison-note">
+          This {words.unit} is still in progress, so only the first {fairDays === 1 ? "day" : `${fairDays} days`} of each {words.unit}{" "}
+          {fairDays === 1 ? "is" : "are"} compared.
+        </p>
+      ) : null}
+      {comparison && !fairDays && shown.status === "InProgress" ? (
         <p className="subtle comparison-note">
           This {words.unit} is still in progress, so it is compared with the whole of last {words.unit}.
         </p>

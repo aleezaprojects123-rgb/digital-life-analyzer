@@ -1,9 +1,13 @@
 // TEST DATA below is made up for these tests. It is not real activity and it is not used by the app.
 import { describe, expect, it } from "vitest";
 import {
-  barHeights, cardsFromReport, cardsFromToday, compareTotals, conicGradient, contentText, donutShares, highlightText,
-  statusBadge, totalContent,
+  barHeights, cardsFromReport, cardsFromToday, compareTotals, comparePeriods, conicGradient, contentText, donutShares, GRIDLINE_FRACTIONS, gridlines,
+  elapsedDays, highlightText, MONTHLY_CHART_CAPACITY_SECONDS, statusBadge, totalContent, WEEKLY_CHART_CAPACITY_SECONDS,
 } from "./model.js";
+import * as model from "./model.js";
+
+// everything model.js exports, to prove the old minimum-scale rule is gone
+const modelExports = Object.keys(model);
 
 // TEST DATA: today, in the shape of dataSource.parseToday().
 const testToday = {
@@ -18,26 +22,210 @@ const testToday = {
   ],
 };
 
-describe("barHeights (relative to the largest bar)", () => {
-  it("makes the largest bar 100 and the others a share of it", () => {
-    expect(barHeights([7200, 3600, 1800, 0, 5400])).toEqual([100, 50, 25, 0, 75]);
+describe("the fixed bar scale (seconds / capacity)", () => {
+  const DAY = WEEKLY_CHART_CAPACITY_SECONDS;
+  const WEEK = MONTHLY_CHART_CAPACITY_SECONDS;
+
+  it("has two named capacities: 24 hours for a day and 7 days (168 hours) for a week block", () => {
+    expect(WEEKLY_CHART_CAPACITY_SECONDS).toBe(24 * 3600);
+    expect(WEEKLY_CHART_CAPACITY_SECONDS).toBe(86400);
+    expect(MONTHLY_CHART_CAPACITY_SECONDS).toBe(168 * 3600);
+    expect(MONTHLY_CHART_CAPACITY_SECONDS).toBe(604800);
   });
 
-  it("does not depend on the unit", () => {
-    expect(barHeights([2, 1])).toEqual(barHeights([2000, 1000]));
+  it("no longer has the old minimum-scale rule", () => {
+    expect(modelExports).not.toContain("MIN_SCALE_SECONDS");
+    expect(modelExports).not.toContain("chartMax");
   });
 
-  it("gives a single bar the full height", () => {
-    expect(barHeights([42])).toEqual([100]);
+  it("makes 1h 23m of a day about 5.8 percent of the chart height", () => {
+    const [height] = barHeights([83 * 60], DAY);
+    expect(height).toBeCloseTo(5.76, 2);
+    expect(height).toBeGreaterThan(5.7);
+    expect(height).toBeLessThan(5.8);
   });
 
-  it("gives every bar 0 when all are 0, and for no bars at all (no division by zero)", () => {
-    expect(barHeights([0, 0, 0])).toEqual([0, 0, 0]);
-    expect(barHeights([])).toEqual([]);
+  it("makes 12 hours of a day exactly half", () => {
+    expect(barHeights([12 * 3600], DAY)).toEqual([50]);
+  });
+
+  it("makes 24 hours of a day exactly full height", () => {
+    expect(barHeights([24 * 3600], DAY)).toEqual([100]);
+  });
+
+  it("makes 3 minutes of a day tiny (about 0.2 percent) but above 0", () => {
+    const [height] = barHeights([180], DAY);
+    expect(height).toBeCloseTo((180 / 86400) * 100, 10);
+    expect(height).toBeGreaterThan(0);
+    expect(height).toBeLessThan(0.5);
+  });
+
+  it("does not depend on the other bars: a lone small day is not scaled up", () => {
+    expect(barHeights([180], DAY)).toEqual([barHeights([180, 0, 0], DAY)[0]]);
+    expect(barHeights([180, 18000], DAY)[0]).toBe(barHeights([180], DAY)[0]);
+  });
+
+  it("makes a quarter of the capacity a quarter of the chart, for a day and for a week block", () => {
+    expect(barHeights([6 * 3600], DAY)).toEqual([25]);
+    expect(barHeights([42 * 3600], WEEK)).toEqual([25]);
+  });
+
+  it("makes 42 hours, 84 hours and 168 hours of a week block a quarter, a half and full", () => {
+    expect(barHeights([42 * 3600, 84 * 3600, 126 * 3600, 168 * 3600], WEEK)).toEqual([25, 50, 75, 100]);
+  });
+
+  it("keeps the ratio between bars", () => {
+    const [a, b] = barHeights([9 * 3600, 3 * 3600], DAY);
+    expect(a / b).toBeCloseTo(3, 10);
+  });
+
+  it("caps a bar at full height when the data is above the capacity", () => {
+    expect(barHeights([25 * 3600], DAY)).toEqual([100]);
+    expect(barHeights([48 * 3600, 1e9], DAY)).toEqual([100, 100]);
+    expect(barHeights([169 * 3600], WEEK)).toEqual([100]);
+    for (const seconds of [DAY + 1, DAY * 2, 1e12]) expect(barHeights([seconds], DAY)[0]).toBeLessThanOrEqual(100);
+  });
+
+  it("gives a bar with no time height 0, and all-zero or empty data no height at all", () => {
+    expect(barHeights([0, 0, 0], DAY)).toEqual([0, 0, 0]);
+    expect(barHeights([7200, 0], DAY)[1]).toBe(0);
+    expect(barHeights([], DAY)).toEqual([]);
   });
 
   it("ignores values that are not positive numbers", () => {
-    expect(barHeights([100, -50, NaN, Infinity, undefined])).toEqual([100, 0, 0, 0, 0]);
+    expect(barHeights([43200, -50, NaN, Infinity, undefined, null, "9"], DAY)).toEqual([50, 0, 0, 0, 0, 0, 0]);
+  });
+});
+
+describe("gridlines (0, a quarter, a half, three quarters, full capacity)", () => {
+  it("are at the five fractions", () => {
+    expect(GRIDLINE_FRACTIONS).toEqual([0, 0.25, 0.5, 0.75, 1]);
+    expect(gridlines(WEEKLY_CHART_CAPACITY_SECONDS).map((g) => g.fraction)).toEqual([0, 0.25, 0.5, 0.75, 1]);
+  });
+
+  it("are labelled 0, 6h, 12h, 18h and 24h for the weekly chart", () => {
+    const lines = gridlines(WEEKLY_CHART_CAPACITY_SECONDS);
+    expect(lines.map((g) => g.seconds)).toEqual([0, 6 * 3600, 12 * 3600, 18 * 3600, 24 * 3600]);
+    expect(lines.map((g) => g.label)).toEqual(["0m", "6h 00m", "12h 00m", "18h 00m", "24h 00m"]);
+  });
+
+  it("are labelled 0, 42h, 84h, 126h and 168h for the monthly chart", () => {
+    const lines = gridlines(MONTHLY_CHART_CAPACITY_SECONDS);
+    expect(lines.map((g) => g.seconds)).toEqual([0, 42 * 3600, 84 * 3600, 126 * 3600, 168 * 3600]);
+    expect(lines.map((g) => g.label)).toEqual(["0m", "42h 00m", "84h 00m", "126h 00m", "168h 00m"]);
+  });
+
+  it("use the existing time formatter and follow whatever capacity is given", () => {
+    const lines = gridlines(4 * 3600);
+    expect(lines.map((g) => g.label)).toEqual(["0m", "1h 00m", "2h 00m", "3h 00m", "4h 00m"]);
+  });
+
+  it("put a bar of exactly a gridline's time on that gridline", () => {
+    const lines = gridlines(WEEKLY_CHART_CAPACITY_SECONDS);
+    const heights = barHeights(lines.map((g) => g.seconds), WEEKLY_CHART_CAPACITY_SECONDS);
+    expect(heights).toEqual(lines.map((g) => g.fraction * 100));
+  });
+});
+
+// TEST DATA: reports reduced to what comparePeriods() reads (status, dates, totals and the per-day list).
+const dayList = (firstDay, seconds) =>
+  seconds.map((totalSeconds, i) => ({ date: `${firstDay.slice(0, 8)}${String(Number(firstDay.slice(8)) + i).padStart(2, "0")}`, dayOfWeek: "", totalSeconds }));
+const period = (firstDay, status, seconds) => ({
+  firstDay,
+  lastDay: "",
+  status,
+  totalSeconds: seconds.reduce((a, b) => a + b, 0),
+  days: dayList(firstDay, seconds),
+});
+
+describe("elapsedDays", () => {
+  const week = period("2026-10-26", "InProgress", [0, 0, 0, 0, 0, 0, 0]);
+
+  it("counts the days that have gone by, today included", () => {
+    expect(elapsedDays(week, "2026-10-26")).toBe(1);
+    expect(elapsedDays(week, "2026-10-28")).toBe(3);
+    expect(elapsedDays(week, "2026-11-01")).toBe(7);
+  });
+
+  it("is null when today is outside the period, or the period has no day list", () => {
+    expect(elapsedDays(week, "2026-10-25")).toBeNull();
+    expect(elapsedDays(week, "2026-11-02")).toBeNull();
+    expect(elapsedDays(week, "nonsense")).toBeNull();
+    expect(elapsedDays({ ...week, days: [] }, "2026-10-28")).toBeNull();
+  });
+});
+
+describe("comparePeriods (a fair comparison while one period is in progress)", () => {
+  // this week, Monday to Sunday, with 3 days gone by on 2026-10-28
+  const thisWeek = period("2026-10-26", "InProgress", [3600, 7200, 3600, 0, 0, 0, 0]);
+  // last week had a very busy Sunday, which this week has not reached yet
+  const lastWeek = period("2026-10-19", "Completed", [3600, 3600, 3600, 3600, 0, 0, 36000]);
+
+  it("compares only the days gone by so far with the same first days of the other period", () => {
+    // this week so far: 14400. First 3 days of last week: 10800. (The whole of last week is 54000.)
+    const result = comparePeriods(thisWeek, lastWeek, "2026-10-28");
+    expect(result.days).toBe(3);
+    expect(result.comparison).toEqual({ direction: "up", diffSeconds: 3600, text: "+1h 00m" });
+  });
+
+  it("is different from comparing the whole periods", () => {
+    const whole = compareTotals(thisWeek.totalSeconds, lastWeek.totalSeconds);
+    expect(whole.direction).toBe("down");
+    expect(comparePeriods(thisWeek, lastWeek, "2026-10-28").comparison.direction).toBe("up");
+  });
+
+  it("grows with the days: on the 6th day the first 6 days are compared", () => {
+    const later = period("2026-10-26", "InProgress", [3600, 7200, 3600, 0, 7200, 3600, 0]);
+    const result = comparePeriods(later, lastWeek, "2026-10-31");
+    expect(result.days).toBe(6);
+    expect(result.comparison).toEqual({ direction: "up", diffSeconds: 10800, text: "+3h 00m" });
+  });
+
+  it("compares the first day alone on the first day", () => {
+    const result = comparePeriods(period("2026-10-26", "InProgress", [1800, 0, 0, 0, 0, 0, 0]), lastWeek, "2026-10-26");
+    expect(result.days).toBe(1);
+    expect(result.comparison).toEqual({ direction: "down", diffSeconds: 1800, text: "−0h 30m" });
+  });
+
+  it("works the same way round when the finished period is the one shown", () => {
+    const result = comparePeriods(lastWeek, thisWeek, "2026-10-28");
+    expect(result.days).toBe(3);
+    expect(result.comparison).toEqual({ direction: "down", diffSeconds: 3600, text: "−1h 00m" });
+  });
+
+  it("never compares more days than either period has (a short previous month)", () => {
+    const october = period("2026-10-01", "InProgress", Array(31).fill(3600));
+    const september = period("2026-09-01", "Completed", Array(30).fill(1800));
+    const result = comparePeriods(october, september, "2026-10-31");
+    expect(result.days).toBe(30);
+    expect(result.comparison.diffSeconds).toBe(30 * 1800);
+  });
+
+  it("hides the comparison when the other period has no time in those first days", () => {
+    const quietStart = period("2026-10-19", "Completed", [0, 0, 0, 0, 3600, 0, 0]);
+    const result = comparePeriods(thisWeek, quietStart, "2026-10-28");
+    expect(result.days).toBe(3);
+    expect(result.comparison).toBeNull();
+  });
+
+  it("compares whole periods when both are finished", () => {
+    const done = period("2026-10-26", "Completed", [3600, 3600, 0, 0, 0, 0, 0]);
+    const result = comparePeriods(done, lastWeek, "2026-11-20");
+    expect(result.days).toBeNull();
+    expect(result.comparison).toEqual(compareTotals(done.totalSeconds, lastWeek.totalSeconds));
+  });
+
+  it("falls back to whole periods when the day list or today is missing", () => {
+    const whole = compareTotals(thisWeek.totalSeconds, lastWeek.totalSeconds);
+    expect(comparePeriods({ ...thisWeek, days: [] }, lastWeek, "2026-10-28")).toEqual({ comparison: whole, days: null });
+    expect(comparePeriods(thisWeek, { ...lastWeek, days: [] }, "2026-10-28")).toEqual({ comparison: whole, days: null });
+    expect(comparePeriods(thisWeek, lastWeek, "2026-12-25")).toEqual({ comparison: whole, days: null });
+    expect(comparePeriods(thisWeek, lastWeek, "nonsense")).toEqual({ comparison: whole, days: null });
+  });
+
+  it("ignores a bad number in a day list instead of breaking", () => {
+    const messy = { ...thisWeek, days: thisWeek.days.map((d, i) => (i === 1 ? { ...d, totalSeconds: NaN } : d)) };
+    expect(comparePeriods(messy, lastWeek, "2026-10-28").comparison.diffSeconds).toBe(10800 - 7200);
   });
 });
 

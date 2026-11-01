@@ -1,7 +1,8 @@
 // TEST DATA below is made up for these tests. It is not real activity and it is not used by the app.
 import { describe, expect, it } from "vitest";
 import {
-  countWord, formatDuration, formatLongDate, formatMonthRange, formatWeekRange, parseDay, weekdayShort,
+  countWord, daysBetween, formatDuration, formatDurationShort, formatLongDate, formatMonthRange, formatWeekRange, localToday, parseDay,
+  weekdayShort,
 } from "./format.js";
 
 describe("formatDuration (hours and minutes)", () => {
@@ -30,6 +31,62 @@ describe("formatDuration (hours and minutes)", () => {
 
   it.each([NaN, Infinity, -Infinity, -5, undefined, null, "12", {}])("treats %s as 0", (bad) => {
     expect(formatDuration(bad)).toBe("0h 00m");
+  });
+});
+
+describe("formatDurationShort (the label above a bar)", () => {
+  it.each([
+    [180, "3m"],
+    [60, "1m"],
+    [600, "10m"],
+    [3540, "59m"],
+    [3600, "1h 00m"],
+    [3900, "1h 05m"],
+    [18000, "5h 00m"],
+    [36000, "10h 00m"],
+  ])("%s seconds is %s", (seconds, text) => {
+    expect(formatDurationShort(seconds)).toBe(text);
+  });
+
+  it("uses the same rounding as formatDuration", () => {
+    expect(formatDurationShort(89)).toBe("1m");
+    expect(formatDurationShort(90)).toBe("2m");
+    expect(formatDurationShort(3599.6)).toBe("1h 00m");
+    for (const seconds of [3600, 3900, 7500, 8220, 360000]) expect(formatDurationShort(seconds)).toBe(formatDuration(seconds));
+  });
+
+  it("says <1m for a real time that rounds to 0 minutes, and 0m only for no time", () => {
+    expect(formatDurationShort(1)).toBe("<1m");
+    expect(formatDurationShort(29)).toBe("<1m");
+    expect(formatDurationShort(30)).toBe("1m");
+    expect(formatDurationShort(0)).toBe("0m");
+  });
+
+  it.each([NaN, Infinity, -5, undefined, null, "12"])("treats %s as no time", (bad) => {
+    expect(formatDurationShort(bad)).toBe("0m");
+  });
+});
+
+describe("localToday and daysBetween", () => {
+  it("writes this PC's local calendar day, not the UTC day", () => {
+    expect(localToday(new Date(2026, 9, 31, 23, 59, 59))).toBe("2026-10-31");
+    expect(localToday(new Date(2026, 0, 5, 0, 0, 1))).toBe("2026-01-05");
+    expect(localToday(new Date(2026, 11, 9, 12))).toBe("2026-12-09");
+  });
+
+  it("counts whole days, across month and year ends", () => {
+    expect(daysBetween("2026-10-26", "2026-10-26")).toBe(0);
+    expect(daysBetween("2026-10-26", "2026-10-31")).toBe(5);
+    expect(daysBetween("2026-10-26", "2026-11-01")).toBe(6);
+    expect(daysBetween("2026-12-30", "2027-01-02")).toBe(3);
+    expect(daysBetween("2026-10-31", "2026-10-26")).toBe(-5);
+    expect(daysBetween("2026-03-01", "2026-04-01")).toBe(31);
+  });
+
+  it("is NaN for anything that is not a real day", () => {
+    expect(daysBetween("2026-02-30", "2026-03-01")).toBeNaN();
+    expect(daysBetween("nonsense", "2026-03-01")).toBeNaN();
+    expect(daysBetween("2026-03-01", undefined)).toBeNaN();
   });
 });
 

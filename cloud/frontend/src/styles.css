@@ -86,6 +86,10 @@ h2 { font-size: 17px; margin: 0 0 14px; letter-spacing: -0.02em; }
 .platform-card { padding: 17px 14px; min-height: 146px; }
 .platform-top { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 13px; }
 .platform-icon { width: 28px; height: 28px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); border-radius: 9px; font-size: 15px; flex-shrink: 0; }
+/* Platform icon files and the generic icons share one box per place (28px on a card, 18px in the legend), so every platform is the same size. */
+.platform-img { display: block; object-fit: contain; }
+.platform-glyph { line-height: 1; }
+.platform-name { min-width: 0; overflow-wrap: anywhere; }
 .platform-time { font-size: 22px; letter-spacing: -0.04em; font-weight: 750; margin: 15px 0 2px; }
 .platform-count { color: var(--muted); font-size: 12px; }
 .highlight { display: flex; align-items: center; gap: 10px; background: var(--accent-soft); border: 1px solid var(--line); border-radius: 14px; padding: 15px 18px; margin: 0 0 18px; font-weight: 700; }
@@ -101,6 +105,7 @@ h2 { font-size: 17px; margin: 0 0 14px; letter-spacing: -0.02em; }
 .legend { display: grid; gap: 12px; min-width: 145px; }
 .legend-row { display: flex; align-items: center; gap: 9px; font-size: 13px; }
 .swatch { width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; }
+.legend-icon { width: 18px; height: 18px; display: grid; place-items: center; flex-shrink: 0; color: var(--accent); font-size: 13px; }
 .legend-row strong { margin-left: auto; padding-left: 12px; font-weight: 650; }
 
 /* ---- weekly and monthly ---- */
@@ -122,17 +127,23 @@ h2 { font-size: 17px; margin: 0 0 14px; letter-spacing: -0.02em; }
 .comparison.note { text-align: left; margin-top: 28px; }
 .comparison-note { text-align: center; margin: 10px 0 0; }
 
-.bar-chart {
-  height: 220px; display: flex; align-items: stretch; gap: clamp(8px, 2vw, 20px); padding: 12px 8px 0;
-  border-bottom: 1px solid var(--line);
-  background: repeating-linear-gradient(to bottom, transparent 0, transparent 53px, var(--line) 54px, var(--line) 55px);
-  background-position: 0 10px;
-}
-.bar-col { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; min-width: 0; gap: 7px; }
-.bar-space { height: 172px; width: 100%; display: flex; align-items: flex-end; justify-content: center; }
-.bar { width: min(42px, 72%); min-height: 2px; background: var(--accent); border-radius: 7px 7px 2px 2px; opacity: 0.9; }
+/* Bar chart on a fixed real-time scale. The axis, the gridlines and every bar track have the same height (--plot-h), so a
+   percentage of a track is the same place as the same percentage of the gridlines. The headroom above the plot is room for
+   the top gridline label and for the time label above a full-height bar. */
+.chart { --plot-h: 190px; --headroom: 22px; display: flex; gap: 8px; }
+.axis { position: relative; flex-shrink: 0; width: 56px; height: var(--plot-h); margin-top: var(--headroom); }
+.axis-label { position: absolute; right: 0; transform: translateY(50%); font-size: 11px; line-height: 14px; color: var(--muted); white-space: nowrap; }
+.plot { position: relative; flex: 1; min-width: 0; padding-top: var(--headroom); }
+.gridlines { position: absolute; left: 0; right: 0; top: var(--headroom); height: var(--plot-h); pointer-events: none; }
+.gridline { position: absolute; left: 0; right: 0; height: 0; border-top: 1px solid var(--line); }
+.gridline:first-child { border-top-color: var(--muted); }
+.bar-chart { position: relative; display: grid; grid-template-columns: repeat(var(--bars), minmax(0, 1fr)); gap: clamp(6px, 2vw, 18px); }
+.bar-col { min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 7px; }
+.bar-track { position: relative; width: 100%; height: var(--plot-h); }
+/* min-height keeps a very small bar (a few minutes of 24 hours) visible; its time label sits above it, never inside it. */
+.bar { position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); width: min(42px, 72%); min-height: 2px; background: var(--accent); border-radius: 7px 7px 2px 2px; opacity: 0.9; }
+.bar-value { position: absolute; left: 50%; transform: translateX(-50%); padding: 0 3px; border-radius: 4px; background: var(--surface); font-size: 11px; line-height: 14px; color: var(--muted); white-space: nowrap; }
 .bar-day { font-size: 12px; font-weight: 650; }
-.bar-time { font-size: 11px; color: var(--muted); white-space: nowrap; }
 
 /* ---- states ---- */
 .state-card { text-align: center; min-height: 200px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
@@ -175,9 +186,12 @@ h2 { font-size: 17px; margin: 0 0 14px; letter-spacing: -0.02em; }
   .platforms-week { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .platforms-week .card { padding: 14px; }
   .platforms-week .platform-time { font-size: 19px; }
-  .bar-chart { gap: 5px; padding-left: 0; padding-right: 0; }
+  .chart { --plot-h: 160px; gap: 4px; }
+  .axis { width: 46px; }
+  .axis-label { font-size: 10px; }
+  .bar-chart { gap: 5px; }
   .bar-day { font-size: 11px; }
-  .bar-time { font-size: 10px; white-space: normal; text-align: center; }
+  .bar-value { font-size: 10px; padding: 0 2px; }
   .donut-layout { gap: 22px; }
   .donut { width: 160px; height: 160px; }
   .donut::before { width: 100px; height: 100px; }
